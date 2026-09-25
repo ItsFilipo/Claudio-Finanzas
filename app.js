@@ -185,6 +185,7 @@ function boot() {
     if (e.target.matches('#amt, [data-money]')) e.target.value = fmtNum(digits(e.target.value));
   });
   document.addEventListener('change', e => {
+    if (e.target.name === 'sort') { ui.sort = e.target.value; render(); }
     if (e.target.name === 'theme') { S.settings.theme = e.target.value; applyTheme(); commit(); }
   });
   document.addEventListener('keydown', e => {
@@ -262,10 +263,17 @@ const VIEWS = {
   movs() {
     const list = S.movements.filter(m => m.date.startsWith(ui.month)).sort(byDate);
     if (!list.length) return monthBar() + banners() + `<p class="empty">No hay gastos en ${monthName(ui.month).toLowerCase()}. Toca <b>Anotar gasto</b> para registrar el primero.</p>`;
+    const sort = ui.sort || 'new';
+    const head = monthBar() + banners() + `<p class="sub total">${list.length} ${list.length === 1 ? 'gasto' : 'gastos'} · ${money(sum(list, m => m.amount))}</p>
+      <div class="seg" role="radiogroup" aria-label="Ordenar" style="margin-top:12px">${[['new', 'Recientes'], ['high', 'Más caros'], ['low', 'Más baratos']]
+        .map(([v, l]) => `<label><input type="radio" name="sort" value="${v}" ${sort === v ? 'checked' : ''}><span>${l}</span></label>`).join('')}</div>`;
+    if (sort !== 'new') {
+      const sorted = [...list].sort((a, b) => (sort === 'high' ? b.amount - a.amount : a.amount - b.amount) || byDate(a, b));
+      return head + `<div class="list" style="margin-top:16px">${sorted.map(m => movRow(m).replace('<span class="s">', `<span class="s">${dayLabel(m.date)} · `)).join('')}</div>`;
+    }
     const days = new Map();
     for (const m of list) days.set(m.date, [...(days.get(m.date) || []), m]);
-    return monthBar() + banners() + `<p class="sub total">${list.length} ${list.length === 1 ? 'gasto' : 'gastos'} · ${money(sum(list, m => m.amount))}</p>` +
-      [...days].map(([d, ms]) => `<h2 class="day"><span>${dayLabel(d)}</span><span>${money(sum(ms, m => m.amount))}</span></h2><div class="list">${ms.map(movRow).join('')}</div>`).join('');
+    return head + [...days].map(([d, ms]) => `<h2 class="day"><span>${dayLabel(d)}</span><span>${money(sum(ms, m => m.amount))}</span></h2><div class="list">${ms.map(movRow).join('')}</div>`).join('');
   },
 
   dinero() {
