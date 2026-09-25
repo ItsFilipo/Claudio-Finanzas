@@ -137,6 +137,7 @@ button.row:hover { background: color-mix(in oklab, var(--ink) 4%, transparent); 
 .row .t { font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .row .s { font-size: 12.5px; color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .row .a { font-weight: 750; font-variant-numeric: tabular-nums; }
+.row .a.neg { color: var(--danger); }
 .row > svg { color: var(--ink-2); }
 .dot {
   width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center;
@@ -259,7 +260,7 @@ dialog[open] { animation: rise .28s cubic-bezier(.16, 1, .3, 1); }
 
 /* Navegación inferior */
 .tabs {
-  position: fixed; inset: auto 0 0; z-index: 4; display: grid; grid-template-columns: repeat(4, 1fr);
+  position: fixed; inset: auto 0 0; z-index: 4; display: grid; grid-template-columns: repeat(5, 1fr);
   padding: 6px max(8px, calc(50% - 320px)) calc(6px + env(safe-area-inset-bottom, 0px));
   background: color-mix(in oklab, var(--surface) 94%, transparent); border-top: 1px solid var(--line);
   backdrop-filter: blur(12px);
@@ -293,6 +294,7 @@ dialog[open] { animation: rise .28s cubic-bezier(.16, 1, .3, 1); }
 <main>
   <section id="v-sobres"></section>
   <section id="v-movs" hidden></section>
+  <section id="v-dinero" hidden></section>
   <section id="v-metas" hidden></section>
   <section id="v-ajustes" hidden></section>
 </main>
