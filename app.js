@@ -41,13 +41,13 @@ function fresh(now, examples) {
   const s = {
     v: 1,
     categories: [
-      ['comida', 'Comida', 'utensils', '#C8912E', 600000],
-      ['transporte', 'Transporte', 'bus', '#3F6FA8', 180000],
-      ['casa', 'Casa', 'home', '#7A5AA6', 1300000],
-      ['servicios', 'Servicios', 'zap', '#2E8C86', 280000],
-      ['salidas', 'Salidas', 'glass', '#C2544A', 250000],
-      ['salud', 'Salud', 'heart', '#5E8C3A', 120000],
-      ['compras', 'Compras', 'cart', '#D2743A', 200000],
+      ['comida', 'Comida', 'utensils', '#C8912E', 0],
+      ['transporte', 'Transporte', 'bus', '#3F6FA8', 0],
+      ['casa', 'Casa', 'home', '#7A5AA6', 0],
+      ['servicios', 'Servicios', 'zap', '#2E8C86', 0],
+      ['salidas', 'Salidas', 'glass', '#C2544A', 0],
+      ['salud', 'Salud', 'heart', '#5E8C3A', 0],
+      ['compras', 'Compras', 'cart', '#D2743A', 0],
       ['otros', 'Otros', 'dots', '#7C8163', 0],
     ].map(([id, name, icon, color, budget]) => ({ id, name, icon, color, budget })),
     methods: ['Efectivo', 'Nequi', 'Tarjeta débito', 'Tarjeta crédito'].map((name, i) => ({ id: 'm' + i, name })),
@@ -153,6 +153,7 @@ function boot() {
   hostTheme = document.documentElement.getAttribute('data-theme');
   S = store.load() || fresh(new Date(), true);
   S.movements = S.movements.filter(m => m.date >= START); // borra lo anterior a octubre 2026
+  S.categories.forEach(c => { c.budget = 0; }); // por ahora sin presupuestos: solo se registra lo gastado
   postRecurring(S, new Date());
   ui = { view: 'sobres', month: thisMonth() };
   $('#fab').innerHTML = `${ico('plus', 22)} Anotar gasto`;
@@ -271,10 +272,10 @@ const VIEWS = {
       <div class="seg" role="radiogroup" aria-label="Tema">${[['system', 'Automático'], ['light', 'Claro'], ['dark', 'Oscuro']]
         .map(([v, l]) => `<label><input type="radio" name="theme" value="${v}" ${th === v ? 'checked' : ''}><span>${l}</span></label>`).join('')}</div>
     </section>
-    <section class="set"><div class="sec-head"><h2 class="sec">Sobres y presupuestos</h2><button class="link" data-act="cat-edit">Nuevo sobre</button></div>
+    <section class="set"><div class="sec-head"><h2 class="sec">Sobres</h2><button class="link" data-act="cat-edit">Nuevo sobre</button></div>
       <div class="list">${S.categories.map(c => `<button class="row" data-act="cat-edit" data-id="${c.id}">
         <span class="dot" style="--c:${c.color}">${ico(c.icon, 16)}</span>
-        <span><span class="t">${esc(c.name)}</span><span class="s">${c.budget ? money(c.budget) + ' al mes' : 'Sin presupuesto'}</span></span>${ico('right', 18)}</button>`).join('')}</div>
+        <span><span class="t">${esc(c.name)}</span><span class="s">${money(spentByCat(S, thisMonth())[c.id] || 0)} este mes</span></span>${ico('right', 18)}</button>`).join('')}</div>
     </section>
     <section class="set"><div class="sec-head"><h2 class="sec">Gastos recurrentes</h2><button class="link" data-act="rec-edit">Nuevo</button></div>
       ${S.recurring.length ? `<div class="list">${S.recurring.map(r => {
@@ -394,7 +395,6 @@ function openCatEdit(id) {
   const c = id ? cat(id) : { name: '', icon: 'dots', color: COLORS[S.categories.length % COLORS.length][0], budget: 0 };
   openSheet(sheetTop(id ? 'Editar sobre' : 'Nuevo sobre') + `<form class="form" data-form="cat" data-id="${id || ''}">
     ${textField('name', 'Nombre', c.name)}
-    ${moneyField('budget', 'Presupuesto al mes', c.budget, 'Sin presupuesto')}
     <fieldset class="field"><legend>Ícono</legend><div class="icons">${CAT_ICONS.map(k => `<label class="ic"><input type="radio" name="icon" value="${k}" ${k === c.icon ? 'checked' : ''} aria-label="${k}"><span>${ico(k)}</span></label>`).join('')}</div></fieldset>
     <fieldset class="field"><legend>Color</legend><div class="colors">${COLORS.map(([k, n]) => `<label class="sw" style="--c:${k}"><input type="radio" name="color" value="${k}" ${k === c.color ? 'checked' : ''} aria-label="${n}"><span></span></label>`).join('')}</div></fieldset>
     ${actions(id, 'cat-del')}</form>`, id ? null : 'input[name=name]');
@@ -514,7 +514,7 @@ function onSubmit(e) {
   const upsert = (list, obj) => { const x = id && list.find(o => o.id === id); if (x) Object.assign(x, obj); else list.push({ id: uid(), ...obj }); };
   switch (f.dataset.form) {
     case 'meth': S.methods.push({ id: uid(), name: d.name.trim() }); break;
-    case 'cat': upsert(S.categories, { name: d.name.trim(), budget: digits(d.budget), icon: d.icon, color: d.color }); break;
+    case 'cat': upsert(S.categories, { name: d.name.trim(), budget: 0, icon: d.icon, color: d.color }); break;
     case 'rec': {
       const day = Math.max(1, Math.min(31, digits(d.day)));
       const r = { name: d.name.trim(), amount: digits(d.amount), cat: d.cat, method: d.method, day };
