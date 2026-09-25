@@ -7,6 +7,8 @@ const ymd = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())
 const money = n => (n < 0 ? '−$' : '$') + Math.round(Math.abs(n)).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
 const fmtNum = n => (n ? money(n).slice(1) : '');
 const digits = s => Number(String(s).replace(/\D/g, '')) || 0;
+// La app empieza en octubre de 2026: no se muestran ni se registran meses anteriores.
+const START = '2026-10';
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 
 function spentByCat(state, month) {
@@ -19,6 +21,7 @@ function spentByCat(state, month) {
 // ponytail: no rellena meses en los que no se abrió la app; agregarlo si hace falta.
 function postRecurring(state, now) {
   const month = ymd(now).slice(0, 7);
+  if (month < START) return 0;
   const last = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
   let n = 0;
   for (const r of state.recurring) {
@@ -52,7 +55,8 @@ function fresh(now, examples) {
     settings: { theme: 'system', method: 'm0' },
   };
   if (examples) {
-    const day = k => { const d = new Date(now); d.setDate(Math.max(1, now.getDate() - k)); return ymd(d); };
+    const early = ymd(now).slice(0, 7) < START, a = early ? new Date(2026, 9, 1) : now;
+    const day = k => { const d = new Date(a); d.setDate(early ? 1 + k : Math.max(1, a.getDate() - k)); return ymd(d); };
     s.movements = [
       [8500, 'comida', 'm0', 'Tinto y pandebono', 0], [18000, 'comida', 'm1', 'Almuerzo', 0],
       [3200, 'transporte', 'm0', 'Bus', 0], [142500, 'comida', 'm2', 'Mercado', 1],
@@ -103,6 +107,7 @@ const ICONS = {
   plus: '<path d="M12 5v14"/><path d="M5 12h14"/>',
   x: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
   left: '<path d="m15 18-6-6 6-6"/>',
+  down: '<path d="m6 9 6 6 6-6"/>',
   right: '<path d="m9 18 6-6-6-6"/>',
 };
 const CAT_ICONS = ['utensils', 'bus', 'home', 'zap', 'glass', 'heart', 'cart', 'coffee', 'car', 'gift',
@@ -114,7 +119,8 @@ const ico = (k, size = 20) => `<svg viewBox="0 0 24 24" width="${size}" height="
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
-const thisMonth = () => ymd(new Date()).slice(0, 7);
+const todayStr = () => { const t = ymd(new Date()); return t < START + '-01' ? START + '-01' : t; };
+const thisMonth = () => todayStr().slice(0, 7);
 const byDate = (a, b) => b.date.localeCompare(a.date) || (b.t || 0) - (a.t || 0);
 const sum = (xs, f) => xs.reduce((a, x) => a + f(x), 0);
 
@@ -146,6 +152,7 @@ function shown(c, spent) {
 function boot() {
   hostTheme = document.documentElement.getAttribute('data-theme');
   S = store.load() || fresh(new Date(), true);
+  S.movements = S.movements.filter(m => m.date >= START); // borra lo anterior a octubre 2026
   postRecurring(S, new Date());
   ui = { view: 'sobres', month: thisMonth() };
   $('#fab').innerHTML = `${ico('plus', 22)} Anotar gasto`;
@@ -187,8 +194,8 @@ function render() {
 }
 
 const monthBar = () => `<header class="top">
-  <button class="icon-btn" data-act="month" data-k="-1" aria-label="Mes anterior">${ico('left')}</button>
-  <h1>${monthName(ui.month)}</h1>
+  <button class="icon-btn" data-act="month" data-k="-1" aria-label="Mes anterior" ${ui.month <= START ? 'disabled' : ''}>${ico('left')}</button>
+  <h1><button class="title-btn" data-act="year" data-y="${ui.month.slice(0, 4)}" aria-label="Ver calendario del año">${monthName(ui.month)} ${ico('down', 18)}</button></h1>
   <button class="icon-btn" data-act="month" data-k="1" aria-label="Mes siguiente" ${ui.month >= thisMonth() ? 'disabled' : ''}>${ico('right')}</button>
 </header>`;
 
@@ -319,7 +326,7 @@ function openAdd(opts = {}) {
     <div class="pick" role="group" aria-label="Sobre">${S.categories.map(c => `<button type="button" class="pick-cat" data-act="pick" data-id="${c.id}" style="--c:${c.color}" aria-pressed="${ui.add.cat === c.id}">
       <span class="seal sm">${ico(c.icon, 16)}</span><span>${esc(c.name)}</span></button>`).join('')}</div>
     <div class="chips" role="radiogroup" aria-label="Método de pago">${S.methods.map(x => `<label class="chip"><input type="radio" name="method" value="${x.id}" ${x.id === method ? 'checked' : ''}><span>${esc(x.name)}</span></label>`).join('')}</div>
-    <div class="two"><input class="text" id="note" placeholder="Nota (opcional)" value="${esc(m?.note || '')}" maxlength="60" aria-label="Nota"><input class="text" type="date" id="date" value="${m?.date || ymd(new Date())}" aria-label="Fecha"></div>
+    <div class="two"><input class="text" id="note" placeholder="Nota (opcional)" value="${esc(m?.note || '')}" maxlength="60" aria-label="Nota"><input class="text" type="date" id="date" value="${m?.date || todayStr()}" min="${START}-01" aria-label="Fecha"></div>
     ${m ? `<div class="actions"><button type="button" class="btn danger" data-act="del-mov" data-confirm>Eliminar</button><button type="button" class="btn primary" data-act="save-mov">Guardar</button></div>` : ''}`, '#amt');
 }
 
@@ -337,7 +344,7 @@ function saveMov() {
   if (!ui.add.cat) return nudge('Ahora toca el sobre de donde sale.');
   const data = {
     amount, cat: ui.add.cat, method: document.querySelector('input[name=method]:checked')?.value,
-    note: $('#note').value.trim(), date: $('#date').value || ymd(new Date()),
+    note: $('#note').value.trim(), date: $('#date').value >= START ? $('#date').value : todayStr(),
   };
   const c = cat(data.cat), month = data.date.slice(0, 7);
   const before = shown(c, spentByCat(S, month)[c.id] || 0);
@@ -422,6 +429,20 @@ function openGoalAdd(id) {
     <button class="btn primary wide">Abonar</button></form>`, 'input[name=amount]');
 }
 
+// Calendario del año: cada mes con lo que gastaste; desde octubre 2026 hasta el mes actual.
+function openYear(y) {
+  const first = +START.slice(0, 4), last = +thisMonth().slice(0, 4);
+  const nav = (k, ok, label) => `<button type="button" class="icon-btn" data-act="year" data-y="${y + k}" aria-label="${label}" ${ok ? '' : 'disabled'}>${ico(k < 0 ? 'left' : 'right')}</button>`;
+  const months = Array.from({ length: 12 }, (_, i) => {
+    const m = `${y}-${pad(i + 1)}`, off = m < START || m > thisMonth();
+    const spent = sum(S.movements.filter(x => x.date.startsWith(m)), x => x.amount);
+    return `<button class="month-cell" data-act="pick-month" data-m="${m}" ${off ? 'disabled' : ''} aria-current="${m === ui.month}">
+      <span>${cap(new Date(y, i, 1).toLocaleDateString('es-CO', { month: 'short' }).replace('.', ''))}</span><b>${off ? '—' : money(spent)}</b></button>`;
+  }).join('');
+  openSheet(sheetTop('Calendario') + `<div class="year-nav">${nav(-1, y > first, 'Año anterior')}<h2>${y}</h2>${nav(1, y < last, 'Año siguiente')}</div>
+    <div class="year">${months}</div>`);
+}
+
 let toastTimer;
 function toast(msg, undo) {
   const t = $('#toast');
@@ -450,6 +471,8 @@ function onClick(e) {
   switch (el.dataset.act) {
     case 'tab': ui.view = el.dataset.tab; scrollTo(0, 0); render(); break;
     case 'month': ui.month = shiftMonth(ui.month, +el.dataset.k); render(); break;
+    case 'year': openYear(+el.dataset.y); break;
+    case 'pick-month': ui.month = el.dataset.m; closeSheet(); render(); break;
     case 'add': openAdd(); break;
     case 'add-in': openAdd({ cat: id }); break;
     case 'close': closeSheet(); break;
@@ -495,7 +518,7 @@ function onSubmit(e) {
     case 'rec': {
       const day = Math.max(1, Math.min(31, digits(d.day)));
       const r = { name: d.name.trim(), amount: digits(d.amount), cat: d.cat, method: d.method, day };
-      if (!id && new Date().getDate() > day) r.last = thisMonth();
+      if (!id && todayStr() > `${thisMonth()}-${pad(day)}`) r.last = thisMonth();
       upsert(S.recurring, r);
       postRecurring(S, new Date());
       break;

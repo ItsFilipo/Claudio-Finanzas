@@ -55,6 +55,18 @@ main { max-width: 640px; margin-inline: auto; }
   background: var(--bg); z-index: 3;
 }
 .top h1 { font: 800 22px/1.1 var(--display); letter-spacing: -.02em; }
+.title-btn { display: inline-flex; align-items: center; gap: 4px; font: inherit; padding: 4px 8px; border-radius: 10px; }
+.title-btn svg { color: var(--ink-2); }
+.title-btn:hover { background: color-mix(in oklab, var(--ink) 7%, transparent); }
+.year-nav { display: flex; justify-content: space-between; align-items: center; }
+.year-nav h2 { font: 800 26px/1 var(--display); letter-spacing: -.02em; }
+.year { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.month-cell { display: grid; gap: 4px; padding: 14px 12px; border-radius: 12px; text-align: left; background: var(--surface); box-shadow: var(--shadow); }
+.month-cell span { font-weight: 700; }
+.month-cell b { font-size: 13px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.month-cell:disabled { box-shadow: none; background: none; border: 1px dashed var(--line); opacity: .55; cursor: default; }
+.month-cell[aria-current="true"] { background: var(--accent); color: var(--on-accent); }
+.month-cell[aria-current="true"] b { color: inherit; }
 .icon-btn {
   width: 40px; height: 40px; display: grid; place-items: center; border-radius: 50%; color: var(--ink-2);
 }
