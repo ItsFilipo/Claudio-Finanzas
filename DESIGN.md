@@ -68,3 +68,12 @@ The ground is a pale security-paper green. Ink and the accent are deep peso gree
   - On phones: a bottom sheet with 22px top corners and a grabber, sliding up with `--ease`, over a backdrop that fades in.
   - On desktop: a centered card sized to its content (`height: fit-content`).
 - **Tab changes:** the incoming view fades in and rises 10px over 0.42s.
+
+## Update: richer money features
+- **Resumen del mes:** a `.list` of info rows. Positive amounts use `.a.pos` (accent) and worse amounts use `.a.neg`.
+- **Card-payment alert:** a `.banner.alert` in warn tint that springs on tap.
+- **Search:** `.searchbox` is a 50px surface field with a focus ring. `#tag` filters are `.chip-btn` pills in accent tint, solid when active.
+- **Gastos frecuentes:** `.quick-btn` chips scroll horizontally at the top of the add sheet. Each one is tinted by its sobre color and has a bottom inner edge.
+- **Dividir:** a `<details class="split">` card inside the add sheet.
+- **Deudas:** the abono form sits in a raised `.pay-box` card above the details form.
+- **Row subtitles** now wrap to 2 lines (line-clamp) so key facts like the card payment day stay visible.

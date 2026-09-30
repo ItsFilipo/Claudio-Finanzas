@@ -33,7 +33,7 @@ w.movements.push({ amount: 30000, cat: 'comida', method: 'm1', date: '2026-10-05
 assert.equal(balance(w, w.methods[1]), 70000);
 assert.equal(balance(w, w.methods[0]), null);
 w.debts.push({ amount: 50000, dir: 'in' }, { amount: 10000, dir: 'out' });
-assert.deepEqual(worth(w), { liquid: 70000, inv: 0, owed: 50000, owe: 10000, total: 110000 });
+assert.deepEqual(worth(w), { liquid: 70000, inv: 0, owed: 50000, owe: 10000, cards: 0, total: 110000 });
 assert.equal(toTable(w).split('\n')[2], '2026-10-05\tComida\tAlmuerzo\tNequi\t30000');
 console.log('ok saldos');
 
@@ -53,3 +53,49 @@ assert.equal(Math.round(c3.gain), 44031); // al vencimiento a 6 meses
 const w2 = fresh(new Date(2026, 9, 5), false); w2.investments.push(cdt);
 assert.equal(worth(w2, new Date(2026, 9, 5)).total, 1000000);
 console.log('ok inversiones');
+
+// Ingresos, transferencias y tarjeta de crédito
+const { cardDebt, cardAlerts, insights, search, tagsOf, goalPlan } = require('./app.js');
+const f = fresh(new Date(2026, 9, 10), false);
+const [efe, neq] = f.methods;
+efe.base = 100000; efe.baseT = 1; neq.base = 0; neq.baseT = 1;
+const nu = { id: 'nu', name: 'Nu', credit: { limit: 2000000, cut: 5, pay: 15 }, base: 0, baseT: 1 };
+f.methods.push(nu);
+f.incomes.push({ amount: 2000000, method: neq.id, date: '2026-10-01', t: 5 }); // sueldo a Nequi
+f.movements.push({ amount: 300000, cat: 'compras', method: 'nu', date: '2026-10-02', t: 6 }); // compra con tarjeta
+f.transfers.push({ amount: 100000, from: neq.id, to: 'nu', date: '2026-10-03', t: 7 }); // pago a la tarjeta
+f.transfers.push({ amount: 50000, from: neq.id, to: efe.id, date: '2026-10-03', t: 8 }); // sacar efectivo
+assert.equal(balance(f, neq), 2000000 - 100000 - 50000);
+assert.equal(balance(f, efe), 150000);
+assert.equal(balance(f, nu), null); // la tarjeta no es plata líquida
+assert.equal(cardDebt(f, nu), 200000);
+assert.equal(worth(f, new Date(2026, 9, 10)).total, 1850000 + 150000 - 200000);
+assert.equal(cardAlerts(f, new Date(2026, 9, 10)).length, 1); // paga el 15: faltan 5 días
+assert.equal(cardAlerts(f, new Date(2026, 9, 5)).length, 0);
+
+// Gasto dividido: solo cuenta tu parte en los sobres, pero sale completo de la cuenta
+const g2 = fresh(new Date(2026, 9, 10), false);
+g2.methods[0].base = 100000; g2.methods[0].baseT = 1;
+g2.movements.push({ amount: 80000, split: 40000, cat: 'comida', method: 'm0', date: '2026-10-09', t: 2 });
+assert.equal(spentByCat(g2, '2026-10').comida, 40000);
+assert.equal(balance(g2, g2.methods[0]), 20000);
+
+// Resumen del mes: comparación con el mes anterior a la misma fecha
+const h = fresh(new Date(2026, 10, 10), false);
+h.movements.push({ amount: 1000, cat: 'comida', date: '2026-10-05' }, { amount: 9000, cat: 'comida', date: '2026-10-20' },
+  { amount: 3000, cat: 'casa', date: '2026-11-02' }, { amount: 500, cat: 'comida', date: '2026-11-02' });
+const ins = insights(h, '2026-11', new Date(2026, 10, 10));
+assert.equal(ins.total, 3500); assert.equal(ins.prevTotal, 1000); // octubre hasta el día 10
+assert.deepEqual(ins.topCat, ['casa', 3000]); assert.deepEqual(ins.topDay, ['2026-11-02', 3500]);
+assert.equal(ins.avg, 350);
+assert.equal(insights(h, '2026-10', new Date(2026, 10, 10)).prevTotal, null); // antes de octubre 2026 no hay comparación
+
+// Búsqueda y etiquetas
+h.movements.push({ amount: 1, cat: 'otros', note: 'Hotel #Viaje', date: '2026-11-03' });
+assert.equal(search(h, '#viaje').length, 1);
+assert.deepEqual(tagsOf('Hotel #Viaje y #playa'), ['#viaje', '#playa']);
+
+// Meta con fecha y retención en la fuente
+assert.equal(goalPlan({ target: 1200000, saved: 200000, due: '2027-03' }, new Date(2026, 10, 1)).perMonth, 200000); // nov–mar = 5 meses
+assert.equal(Math.round(invest({ ...cdt, ret: true }, new Date(2026, 9, 1)).perPay), Math.round(7207.3 * 0.96));
+console.log('ok nuevas funciones');
