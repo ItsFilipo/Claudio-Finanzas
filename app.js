@@ -285,6 +285,7 @@ function boot() {
     if (e.target.id === 'note' && !ui.add?.id) suggestFrom(e.target.value);
   });
   document.addEventListener('change', e => {
+    if (e.target.name === 'horizon') { ui.invYears = +e.target.value; openInvDetail(e.target.dataset.id); }
     if (e.target.name === 'sort') { ui.sort = e.target.value; $('#mov-results').innerHTML = movResults(); }
     if (e.target.name === 'theme') { S.settings.theme = e.target.value; applyTheme(); commit(); }
   });
@@ -837,8 +838,13 @@ function openInv(id) {
 // Detalle de una inversión: gráfica de crecimiento, datos clave y tabla mes a mes.
 function openInvDetail(id) {
   const x = S.investments.find(o => o.id === id), now = new Date(), c = invest(x, now);
-  const months = x.months || 12, at = k => new Date(c.start.getFullYear(), c.start.getMonth() + k, c.start.getDate());
-  const pts = Array.from({ length: months + 1 }, (_, k) => ({ d: at(k), v: x.amount + invest(x, at(k)).earned }));
+  // Horizonte de la gráfica: su plazo o varios años (como si la renovaras con la misma tasa).
+  const yrs = ui.invYears || 0, months = yrs ? yrs * 12 : x.months || 12, xh = yrs ? { ...x, months } : x;
+  const at = k => new Date(c.start.getFullYear(), c.start.getMonth() + k, c.start.getDate());
+  const step = Math.max(1, Math.round(months / 60));
+  const ks = [...Array.from({ length: Math.floor(months / step) + 1 }, (_, j) => j * step), months].filter((k, j, a) => a.indexOf(k) === j);
+  const pts = ks.map(k => ({ d: at(k), v: x.amount + invest(xh, at(k)).earned, s: x.amount * (1 + (x.rate / 100) * (x.ret ? .96 : 1) * k / 12) }));
+  const compound = x.compound && x.freq !== 'e';
   const days = c.end ? Math.ceil((c.end - new Date(now.getFullYear(), now.getMonth(), now.getDate())) / 864e5) : null;
   const n = FREQ[x.freq][0], realEA = x.freq === 'e' ? ((1 + c.i) ** (12 / (x.months || 12)) - 1) * 100 : ((1 + c.i) ** n - 1) * 100;
   const fmtD = d => `${d.getDate()} ${d.toLocaleDateString('es-CO', { month: 'short' }).replace('.', '')} ${d.getFullYear()}`;
@@ -846,7 +852,10 @@ function openInvDetail(id) {
   const rows = pts.slice(1).map((p, k) => `<tr><td>${fmtD(p.d)}</td><td class="pos">+${money(p.v - pts[k].v)}</td><td>${money(p.v)}</td></tr>`).join('');
   openSheet(sheetTop(esc(x.name), `<button class="link" data-act="inv-edit" data-id="${id}">Editar</button>`) + `
     <div><p class="big sm">${big(x.amount + c.earned)}</p><p class="sub">${String(x.rate).replace('.', ',')}% EA · ${FREQ[x.freq][1]} · ${x.compound && x.freq !== 'e' ? 'los intereses se suman' : 'te pagan los intereses'}</p></div>
-    <figure class="chart" id="inv-chart" aria-label="Crecimiento de ${esc(x.name)}">${growthChart(pts, x.amount, now)}<div class="tip" hidden></div></figure>
+    <div class="seg four" role="radiogroup" aria-label="Ver crecimiento a">${[[0, x.months ? 'Su plazo' : '1 año'], [5, '5 años'], [10, '10 años'], [20, '20 años']]
+      .map(([v, l]) => `<label><input type="radio" name="horizon" value="${v}" data-id="${id}" ${yrs === v ? 'checked' : ''}><span>${l}</span></label>`).join('')}</div>
+    <figure class="chart" id="inv-chart" aria-label="Crecimiento de ${esc(x.name)}">${growthChart(pts, x.amount, now, compound)}<div class="tip" hidden></div></figure>
+    ${compound && pts.length > 1 ? `<p class="hint">Con interés compuesto ganas <b>${money(pts.at(-1).v - x.amount)}</b>${yrs ? ` en ${yrs} años` : ''}. Sin compuesto serían ${money(pts.at(-1).s - x.amount)}: el compuesto te suma <b>${money(pts.at(-1).v - pts.at(-1).s)}</b>.</p>` : ''}
     <div class="tiles">
       ${tile('Llevas ganado', money(c.earned), 'hasta hoy')}
       ${tile('Vas a ganar', c.gain == null ? '—' : money(c.gain), c.end ? 'al ' + fmtD(c.end) : 'en total')}
@@ -855,15 +864,16 @@ function openInvDetail(id) {
     </div>
     <h2 class="sec">Mes a mes</h2>
     <div class="table-wrap"><table class="months"><thead><tr><th>Fecha</th><th>Intereses</th><th>Valor</th></tr></thead><tbody>${rows}</tbody></table></div>`);
-  wireChart(pts);
+  wireChart(pts, compound);
 }
 
 // Gráfica SVG: área del valor, línea punteada de lo invertido y un punto en "Hoy".
-function growthChart(pts, base, now) {
+function growthChart(pts, base, now, compound) {
   const W = 340, H = 170, L = 8, R = 8, T = 22, B = 22;
   const t0 = +pts[0].d, t1 = +pts.at(-1).d, hi = Math.max(pts.at(-1).v, base + 1), lo = base - (hi - base) * .3;
   const X = t => L + (t - t0) / (t1 - t0) * (W - L - R), Y = v => T + (1 - (v - lo) / (hi - lo)) * (H - T - B);
   const line = pts.map((p, k) => `${k ? 'L' : 'M'}${X(+p.d).toFixed(1)},${Y(p.v).toFixed(1)}`).join('');
+  const simple = pts.map((p, k) => `${k ? 'L' : 'M'}${X(+p.d).toFixed(1)},${Y(p.s).toFixed(1)}`).join('');
   const inRange = +now >= t0 && +now <= t1;
   const today = inRange ? pts.reduce((a, p) => (+p.d <= +now ? p : a), pts[0]) : null;
   const short = d => d.toLocaleDateString('es-CO', { month: 'short', year: '2-digit' }).replace('.', '');
@@ -872,6 +882,7 @@ function growthChart(pts, base, now) {
     <line x1="${L}" x2="${W - R}" y1="${Y(base)}" y2="${Y(base)}" class="base"/>
     <text x="${W - R}" y="${Y(base) + 15}" class="lbl" text-anchor="end">Invertiste ${money(base)}</text>
     <path d="${line}L${X(t1)},${Y(lo)}L${X(t0)},${Y(lo)}Z" fill="url(#gfill)"/>
+    ${compound ? `<path d="${simple}" class="simple"/><text x="${W - R}" y="${Y(pts.at(-1).s) + 16}" class="lbl" text-anchor="end">Sin compuesto</text>` : ''}
     <path d="${line}" class="curve"/>
     <text x="${W - R}" y="${Y(pts.at(-1).v) - 8}" class="lbl end" text-anchor="end">${money(pts.at(-1).v)}</text>
     ${today ? `<line x1="${X(+now)}" x2="${X(+now)}" y1="${T - 6}" y2="${H - B}" class="now"/><text x="${X(+now)}" y="${T - 10}" class="lbl" text-anchor="middle">Hoy</text>` : ''}
@@ -882,7 +893,7 @@ function growthChart(pts, base, now) {
 }
 
 // Al pasar el dedo o el mouse: línea vertical, punto y el valor de ese mes.
-function wireChart(pts) {
+function wireChart(pts, compound) {
   const fig = $('#inv-chart'), svg = fig.querySelector('svg'), tip = fig.querySelector('.tip');
   const cross = svg.querySelector('.cross'), dot = svg.querySelector('.cdot'), curve = svg.querySelector('.curve');
   const xs = [...curve.getAttribute('d').matchAll(/[ML]([\d.]+),([\d.]+)/g)].map(m => [+m[1], +m[2]]);
@@ -894,7 +905,7 @@ function wireChart(pts) {
     dot.setAttribute('cx', x); dot.setAttribute('cy', y);
     cross.setAttribute('visibility', 'visible'); dot.setAttribute('visibility', 'visible');
     tip.hidden = false;
-    tip.innerHTML = `<b>${money(pts[k].v)}</b><span>${pts[k].d.getDate()} ${pts[k].d.toLocaleDateString('es-CO', { month: 'short', year: 'numeric' }).replace('.', '')}</span>`;
+    tip.innerHTML = `<b>${money(pts[k].v)}</b>${compound ? `<span>sin compuesto ${money(pts[k].s)}</span>` : ''}<span>${pts[k].d.getDate()} ${pts[k].d.toLocaleDateString('es-CO', { month: 'short', year: 'numeric' }).replace('.', '')}</span>`;
     tip.style.left = `${Math.min(Math.max(x / 340 * 100, 18), 82)}%`;
   };
   const hide = () => { tip.hidden = true; cross.setAttribute('visibility', 'hidden'); dot.setAttribute('visibility', 'hidden'); };
@@ -986,7 +997,7 @@ function onClick(e) {
     case 'debt-full': payDebt(id, S.debts.find(x => x.id === id).amount, el.closest('form').elements.method.value); break;
     case 'debt-edit': openDebt(id, el.dataset.dir); break;
     case 'inv-edit': openInv(id); break;
-    case 'inv-detail': openInvDetail(id); break;
+    case 'inv-detail': ui.invYears = 0; openInvDetail(id); break;
     case 'inv-del': S.investments = S.investments.filter(x => x.id !== id); closeSheet(); commit(); toast('Inversión eliminada'); break;
     case 'debt-del': S.debts = S.debts.filter(d => d.id !== id); closeSheet(); commit(); toast('Deuda eliminada'); break;
     case 'restore':
