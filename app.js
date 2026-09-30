@@ -84,10 +84,11 @@ const toTable = state => ['Fecha\tSobre\tNota\tMétodo\tValor', ...[...state.mov
   [m.date, state.categories.find(c => c.id === m.cat)?.name || 'Sin sobre', m.note || '', state.methods.find(x => x.id === m.method)?.name || '', m.amount]
     .map(v => String(v).replace(/[\t\n]/g, ' ')).join('\t'))].join('\n');
 
-// Gasto por sobre entre dos meses (incluidos), por ejemplo '2026-10' a '2026-12'.
+// Gasto por sobre entre dos fechas incluidas: meses ('2026-10' a '2026-12') o días ('2026-10-03' a '2026-11-18').
+const between = (date, from, to) => date >= from && date <= to + '~';
 function spentIn(state, from, to) {
   const t = {};
-  for (const m of state.movements) { const mo = m.date.slice(0, 7); if (mo >= from && mo <= to) t[m.cat] = (t[m.cat] || 0) + own(m); }
+  for (const m of state.movements) if (between(m.date, from, to)) t[m.cat] = (t[m.cat] || 0) + own(m);
   return t;
 }
 const spentByCat = (state, month) => spentIn(state, month, month);
@@ -301,7 +302,7 @@ function boot() {
   });
   document.addEventListener('change', e => {
     if (e.target.id === 'fake-day') { S.settings.fakeToday = e.target.value || null; setClock(S.settings.fakeToday); postRecurring(S, new Date()); ui.month = thisMonth(); commit(); toast(e.target.value ? `Listo: la app cree que hoy es ${+e.target.value.slice(8)} de ${monthName(e.target.value.slice(0, 7)).toLowerCase()}` : 'Volviste a la fecha real'); }
-    if (e.target.name === 'period') { ui.period = e.target.value; render(); }
+
     if (e.target.name === 'horizon') { ui.invYears = +e.target.value; openInvDetail(e.target.dataset.id); }
     if (e.target.name === 'sort') { ui.sort = e.target.value; $('#mov-results').innerHTML = movResults(); }
     if (e.target.name === 'theme') { S.settings.theme = e.target.value; applyTheme(); commit(); }
@@ -339,10 +340,14 @@ function period() {
   if (p === 'tri') { const q = Math.floor((m - 1) / 3) * 3; const from = `${y}-${pad(q + 1)}`, to = `${y}-${pad(q + 3)}`;
     return { p, from, to, label: `${cap(new Date(y, q, 1).toLocaleDateString('es-CO', { month: 'short' }).replace('.', ''))} – ${new Date(y, q + 2, 1).toLocaleDateString('es-CO', { month: 'short' }).replace('.', '')} ${y}`, step: 3, words: 'este trimestre' }; }
   if (p === 'anio') return { p, from: `${y}-01`, to: `${y}-12`, label: String(y), step: 12, words: `en ${y}` };
+  const fmt = d => `${+d.slice(8)} ${new Date(d + 'T00:00').toLocaleDateString('es-CO', { month: 'short' }).replace('.', '')}`;
+  if (p === 'dias') { const t = todayStr(), f = new Date(t + 'T00:00'); f.setDate(f.getDate() - ui.days + 1); const from = ymd(f);
+    return { p, from, to: t, label: `Últimos ${ui.days} días`, step: 0, words: `en los últimos ${ui.days} días`, chip: `${ui.days} días` }; }
+  if (p === 'rango') return { p, ...ui.range, label: `${fmt(ui.range.from)} – ${fmt(ui.range.to)}`, step: 0, words: `del ${fmt(ui.range.from)} al ${fmt(ui.range.to)}`, chip: 'Personalizado' };
   if (p === 'todo') return { p, from: '0000', to: '9999', label: 'Desde el inicio', step: 0, words: 'desde que empezaste' };
   return { p, from: ui.month, to: ui.month, label: monthName(ui.month), step: 1, words: 'en ' + monthName(ui.month).toLowerCase() };
 }
-const inPeriod = (date, pr) => { const mo = date.slice(0, 7); return mo >= pr.from && mo <= pr.to; };
+const inPeriod = (date, pr) => between(date, pr.from, pr.to);
 
 const gear = () => `<button class="icon-btn" data-act="tab" data-tab="ajustes" aria-label="Ajustes">${ico('sliders')}</button>`;
 const monthBar = () => {
@@ -350,13 +355,16 @@ const monthBar = () => {
   return `<header class="top">
   <h1>${pr.p === 'mes' ? `<button class="title-btn" data-act="year" data-y="${ui.month.slice(0, 4)}" aria-label="Ver calendario del año">${pr.label} ${ico('down', 18)}</button>` : pr.label}</h1>
   <div class="top-actions">
-    ${pr.step ? `<button class="icon-btn" data-act="month" data-k="-${pr.step}" aria-label="Periodo anterior" ${pr.from <= START ? 'disabled' : ''}>${ico('left')}</button>
-    <button class="icon-btn" data-act="month" data-k="${pr.step}" aria-label="Periodo siguiente" ${pr.to >= thisMonth() ? 'disabled' : ''}>${ico('right')}</button>` : ''}
+    ${pr.step ? `<button class="icon-btn" data-act="month" data-k="-${pr.step}" aria-label="Periodo anterior" ${pr.from.slice(0, 7) <= START ? 'disabled' : ''}>${ico('left')}</button>
+    <button class="icon-btn" data-act="month" data-k="${pr.step}" aria-label="Periodo siguiente" ${pr.to.slice(0, 7) >= thisMonth() ? 'disabled' : ''}>${ico('right')}</button>` : ''}
     ${gear()}
   </div>
 </header>
-<div class="seg four period" role="radiogroup" aria-label="Periodo">${[['mes', 'Mes'], ['tri', 'Trimestre'], ['anio', 'Año'], ['todo', 'Todo']]
-  .map(([v, l]) => `<label><input type="radio" name="period" value="${v}" ${pr.p === v ? 'checked' : ''}><span>${l}</span></label>`).join('')}</div>`;
+<div class="period-bar">
+  <button class="chip-btn ${pr.p === 'mes' ? 'on' : ''}" data-act="period" data-p="mes">Mes</button>
+  ${pr.p !== 'mes' ? `<button class="chip-btn on" data-act="period-more">${pr.chip || { tri: 'Trimestre', anio: 'Año', todo: 'Desde el inicio' }[pr.p]}</button>` : ''}
+  <button class="link" data-act="period-more">Más opciones</button>
+</div>`;
 };
 const topBar = (title, extra = '') => `<header class="top"><h1>${title}</h1><div class="top-actions">${extra}${gear()}</div></header>`;
 
@@ -962,6 +970,28 @@ function openPanel(kind) {
   openSheet(kind === 'in' || kind === 'out' ? P.debts(kind) : P[kind]());
 }
 
+// Más opciones de periodo: rápidos y un rango personalizado de fechas.
+function openPeriods() {
+  const t = todayStr(), opt = (p, extra, label, sub) => `<button class="row plain" data-act="period" data-p="${p}" ${extra}><span><span class="t">${label}</span><span class="s">${sub}</span></span>${ico('right', 18)}</button>`;
+  openSheet(sheetTop('Ver gastos de…') + `<div class="list">
+    ${opt('mes', '', 'Este mes', monthName(thisMonth()))}
+    ${opt('dias', 'data-n="15"', 'Últimos 15 días', 'Hasta hoy')}
+    ${opt('dias', 'data-n="30"', 'Últimos 30 días', 'Hasta hoy')}
+    ${opt('tri', '', 'Trimestre', 'Tres meses juntos')}
+    ${opt('anio', '', 'Año', 'Todo el año')}
+    ${opt('todo', '', 'Desde el inicio', 'Todo lo que has anotado')}
+  </div>
+  <h2 class="sec">Personalizado</h2>
+  <form class="form" data-form="range">
+    <div class="two even">
+      <label class="field"><span>Desde</span><input class="text" type="date" name="from" value="${ui.range?.from || thisMonth() + '-01'}" min="${START}-01" required></label>
+      <label class="field"><span>Hasta</span><input class="text" type="date" name="to" value="${ui.range?.to || t}" min="${START}-01" required></label>
+    </div>
+    <p class="hint" id="range-hint">Por ejemplo, del día que te pagaron hasta hoy.</p>
+    <button class="btn primary wide">Ver este rango</button>
+  </form>`);
+}
+
 // Copia al portapapeles; si el navegador no deja, muestra el texto para copiarlo a mano.
 function copyText(text, ok, title) {
   const fallback = () => openSheet(sheetTop(title) + `<p class="hint">Copia todo este texto.</p><textarea class="text" id="bk" readonly>${esc(text)}</textarea>`, '#bk');
@@ -1039,6 +1069,8 @@ function onClick(e) {
         <span><span class="t">${esc(r.name)}</span><span class="s">Cada día ${r.day} · ${r.kind === 'in' ? 'ingreso' : esc(c.name)} · ${esc(meth(r.method))}</span></span><span class="a ${r.kind === 'in' ? 'pos' : ''}">${r.kind === 'in' ? '+' : ''}${money(r.amount)}</span></button>`; }).join('')}</div>` : '') +
       `<p class="hint">Arriendo, Netflix o tu sueldo: los creas una vez y se anotan solos cada mes el día que elijas.</p>`); break;
     case 'panel': openPanel(el.dataset.p); break;
+    case 'period-more': openPeriods(); break;
+    case 'period': ui.period = el.dataset.p; if (el.dataset.n) ui.days = +el.dataset.n; if (ui.period === 'mes' || ui.period === 'dias') ui.month = thisMonth(); if ($('#sheet').open) closeSheet(); render(); break;
     case 'real-date': S.settings.fakeToday = null; setClock(null); ui.month = thisMonth(); commit(); toast('Volviste a la fecha real'); break;
     case 'cats': openSheet(sheetTop('Tus sobres', '<button class="link" data-act="cat-edit">Nuevo</button>') + `<div class="list">${S.categories.map(c => `<button class="row" data-act="cat-edit" data-id="${c.id}">
       <span class="dot" style="--c:${c.color}">${ico(c.icon, 16)}</span>
@@ -1110,6 +1142,9 @@ function onSubmit(e) {
       upsert(S.investments, { name: d.name.trim(), amount: digits(d.amount), rate, freq: d.freq, compound: d.mode === 'sum', start: d.start, months: months || null, ret: !!d.ret });
       break;
     }
+    case 'range':
+      if (d.from > d.to) { const h = $('#range-hint'); h.textContent = '"Desde" tiene que ser antes de "Hasta".'; h.className = 'hint err'; return; }
+      ui.period = 'rango'; ui.range = { from: d.from, to: d.to }; closeSheet(); render(); return;
     case 'debt': upsert(S.debts, { who: d.who.trim(), amount: digits(d.amount), note: d.note.trim(), dir: f.dataset.dir, due: d.due || '' }); break;
     case 'cat': upsert(S.categories, { name: d.name.trim(), budget: 0, icon: d.icon, color: d.color }); break;
     case 'rec': {

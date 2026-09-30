@@ -404,7 +404,9 @@ dialog[open]::backdrop { animation: fade .3s ease-out; }
 .chart svg { width: 100%; height: auto; display: block; overflow: visible; }
 .chart .curve { fill: none; stroke: var(--accent); stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round; }
 .seg.four { grid-template-columns: repeat(4, 1fr); }
-.seg.period { margin-bottom: 14px; }
+.row.plain { grid-template-columns: 1fr auto; }
+.period-bar { display: flex; align-items: center; gap: 8px; margin: -4px 0 14px; }
+.period-bar .link { margin-left: auto; margin-right: -12px; }
 .seg.four span { font-size: 13px; padding-inline: 2px; }
 .chart .base { stroke: var(--ink-2); stroke-width: 1.2; stroke-dasharray: 4 4; opacity: .7; }
 .chart .now { stroke: var(--ink-2); stroke-width: 1; opacity: .5; }

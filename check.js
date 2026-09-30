@@ -124,3 +124,6 @@ q.movements.push({ amount: 100, cat: 'comida', date: '2026-10-03' }, { amount: 2
 assert.deepEqual(spentIn(q, '2026-10', '2026-12'), { comida: 300, casa: 50 });
 assert.deepEqual(spentIn(q, '2026-01', '2026-12').comida, 300);
 console.log('ok periodos');
+assert.deepEqual(spentIn(q, '2026-10-01', '2026-11-03'), { comida: 300 }); // rango por días, incluye el día final
+assert.deepEqual(spentIn(q, '2026-10-04', '2026-11-02'), {});
+console.log('ok rangos por días');
