@@ -419,7 +419,8 @@ const VIEWS = {
 
   dinero() {
     const w = worth(S), now = new Date(), today = todayStr();
-    const accounts = S.methods.filter(m => !m.credit), cards = S.methods.filter(m => m.credit);
+    // Cuentas ordenadas por saldo, de mayor a menor; las que no llevan saldo van al final.
+    const accounts = S.methods.filter(m => !m.credit).sort((a, b) => (balance(S, b) ?? -Infinity) - (balance(S, a) ?? -Infinity)), cards = S.methods.filter(m => m.credit);
     const dueTxt = d => { if (!d.due) return ''; const days = Math.round((new Date(d.due + 'T00:00') - new Date(today + 'T00:00')) / 864e5);
       return days < 0 ? ` · <b class="neg">venció hace ${-days} ${-days === 1 ? 'día' : 'días'}</b>` : days <= 3 ? ` · <b class="warn">vence ${days === 0 ? 'hoy' : `en ${days} ${days === 1 ? 'día' : 'días'}`}</b>` : ` · vence el ${dayLabel(d.due).toLowerCase()}`; };
     const debtRow = d => `<button class="row" data-act="debt-edit" data-id="${d.id}"><span class="dot" style="--c:${d.dir === 'in' ? '#2E8C86' : '#C2544A'}">${ico('user', 16)}</span>
