@@ -107,6 +107,20 @@ function insights(state, month, now) {
   return { total, prev, prevTotal, current, topCat: group(m => m.cat), topDay: group(m => m.date), avg: total / (current ? now.getDate() : daysIn(y, mo - 1)), income };
 }
 
+// Nombre normalizado: "Papá", "papa" y " PAPÁ " cuentan como el mismo.
+const norm = t => String(t || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ');
+// Ingresos agrupados por nombre entre dos fechas, de mayor a menor total (sin contar pagos de deudas).
+function incomeRank(state, from, to) {
+  const g = new Map();
+  for (const x of state.incomes || []) {
+    if (x.debt || !between(x.date, from, to)) continue;
+    const k = norm(x.note) || 'ingreso', o = g.get(k) || { key: k, name: (x.note || 'Ingreso').trim(), total: 0, count: 0, last: '' };
+    o.total += x.amount; o.count++; if (x.date >= o.last) o.last = x.date;
+    g.set(k, o);
+  }
+  return [...g.values()].sort((a, b) => b.total - a.total);
+}
+
 // Búsqueda en todos los gastos por nota, sobre, cuenta o #etiqueta.
 const tagsOf = text => (String(text).match(/#[\p{L}\d_]+/gu) || []).map(t => t.toLowerCase());
 function search(state, q) {
@@ -299,6 +313,10 @@ function boot() {
     if (e.target.matches('#amt, [data-money]')) e.target.value = fmtNum(digits(e.target.value));
     if (e.target.id === 'q') { ui.q = e.target.value; $('#mov-results').innerHTML = movResults(); }
     if (e.target.id === 'note' && !ui.add?.id) suggestFrom(e.target.value);
+    if (e.target.id === 'inc-note') { // mismo nombre de antes: elige la cuenta de la última vez
+      const prev = S.incomes.filter(x => norm(x.note) === norm(e.target.value)).sort(byDate)[0];
+      if (prev && e.target.form.elements.method.querySelector(`option[value="${prev.method}"]`)) e.target.form.elements.method.value = prev.method;
+    }
   });
   document.addEventListener('change', e => {
     if (e.target.id === 'fake-day') { S.settings.fakeToday = e.target.value || null; setClock(S.settings.fakeToday); postRecurring(S, new Date()); ui.month = thisMonth(); commit(); toast(e.target.value ? `Listo: la app cree que hoy es ${+e.target.value.slice(8)} de ${monthName(e.target.value.slice(0, 7)).toLowerCase()}` : 'Volviste a la fecha real'); }
@@ -461,7 +479,7 @@ const VIEWS = {
 
   dinero() {
     const w = worth(S), cards = S.methods.filter(m => m.credit);
-    const nFlows = S.incomes.filter(x => x.date.startsWith(ui.month)).length + S.transfers.filter(x => x.date.startsWith(ui.month)).length;
+    const pr = period(), nFlows = S.incomes.filter(x => inPeriod(x.date, pr)).length + S.transfers.filter(x => inPeriod(x.date, pr)).length;
     const row = (panel, icon, color, t, sub, a, cls = '') => `<button class="row" data-act="panel" data-p="${panel}"><span class="dot" style="--c:${color}">${ico(icon, 16)}</span>
       <span><span class="t">${t}</span>${sub ? `<span class="s">${sub}</span>` : ''}</span><span class="a ${cls}">${a}</span></button>`;
     return topBar('Dinero') + banners() + `
@@ -474,7 +492,7 @@ const VIEWS = {
       <div class="row total"><span class="dot" style="--c:var(--accent)">${ico('target', 16)}</span><span><span class="t">Dinero total</span></span><span class="a ${w.total < 0 ? 'neg' : ''}">${money(w.total)}</span></div>
     </div>
     <div class="actions duo"><button class="btn" data-act="inc-edit">${ico('down2', 18)} Ingreso</button><button class="btn" data-act="tr-edit">${ico('arrows', 18)} Transferir</button></div>
-    <div class="list" style="margin-top:14px">${row('flows', 'arrows', '#4F6275', `Entradas y transferencias`, monthName(ui.month), nFlows ? `${nFlows}` : '—')}</div>`;
+    <div class="list" style="margin-top:14px">${row('flows', 'arrows', '#4F6275', `Entradas y transferencias`, pr.label, nFlows ? `${nFlows}` : '—')}</div>`;
   },
 
   inversiones() {
@@ -771,7 +789,8 @@ function openInc(id) {
   const x = id ? S.incomes.find(o => o.id === id) : { amount: 0, method: S.methods.find(m => !m.credit)?.id, note: '', date: todayStr() };
   openSheet(sheetTop(id ? 'Editar ingreso' : 'Nuevo ingreso') + `<form class="form" data-form="inc" data-id="${id || ''}">
     <label class="amount"><span>$</span><input name="amount" inputmode="numeric" data-money autocomplete="off" placeholder="0" value="${fmtNum(x.amount)}" aria-label="Valor" required></label>
-    <label class="field"><span>¿Qué fue?</span><input class="text" name="note" value="${esc(x.note)}" maxlength="40" placeholder="Ej. Sueldo, freelance, regalo"></label>
+    <label class="field"><span>¿Qué fue?</span><input class="text" name="note" id="inc-note" list="inc-dl" autocomplete="off" value="${esc(x.note)}" maxlength="40" placeholder="Ej. Sueldo, Papá, freelance"></label>
+    <datalist id="inc-dl">${incomeRank(S, '0000', '9999').map(g => `<option value="${esc(g.name)}">`).join('')}</datalist>
     ${select('method', '¿A qué cuenta entró?', S.methods.filter(m => !m.credit), x.method)}
     <label class="field"><span>Fecha</span><input class="text" type="date" name="date" value="${x.date}" min="${START}-01" required></label>
     ${actions(id, 'inc-del')}</form>`, id ? null : 'input[name=amount]');
@@ -930,6 +949,10 @@ function wireChart(pts, compound) {
 }
 
 // Ventanas de la pestaña Dinero: cuentas, tarjetas, deudas y entradas/transferencias.
+const flowRow = x => x.k === 'in'
+  ? `<button class="row" data-act="inc-edit" data-id="${x.id}"><span class="dot" style="--c:#2E8C86">${ico('down2', 16)}</span><span><span class="t">${esc(x.note || 'Ingreso')}</span><span class="s">${dayLabel(x.date)}${x.date.slice(0, 7) !== thisMonth() ? ' de ' + monthName(x.date.slice(0, 7)).toLowerCase() : ''} · a ${esc(meth(x.method))}${x.rec ? ' · recurrente' : ''}</span></span><span class="a pos">+${money(x.amount)}</span></button>`
+  : `<button class="row" data-act="tr-edit" data-id="${x.id}"><span class="dot" style="--c:#4F6275">${ico('arrows', 16)}</span><span><span class="t">${esc(x.note || 'Transferencia')}</span><span class="s">${dayLabel(x.date)} · ${esc(meth(x.from))}${x.to ? ' → ' + esc(meth(x.to)) : ''}</span></span><span class="a">${money(x.amount)}</span></button>`;
+
 function openPanel(kind) {
   const w = worth(S), today = todayStr();
   const dueTxt = d => { if (!d.due) return ''; const days = Math.round((new Date(d.due + 'T00:00') - new Date(today + 'T00:00')) / 864e5);
@@ -960,14 +983,22 @@ function openPanel(kind) {
         : `<p class="hint">${dir === 'in' ? 'Nadie te debe plata.' : 'No le debes plata a nadie.'}</p>`);
     },
     flows() {
-      const xs = [...S.incomes.map(x => ({ ...x, k: 'in' })), ...S.transfers.map(x => ({ ...x, k: 'tr' }))].filter(x => x.date.startsWith(ui.month)).sort(byDate);
-      return sheetTop('Entradas y transferencias', '<span></span>') + `<p class="sub" style="margin:0">${monthName(ui.month)}</p>` + (xs.length ? `<div class="list">${xs.map(x => x.k === 'in'
-        ? `<button class="row" data-act="inc-edit" data-id="${x.id}"><span class="dot" style="--c:#2E8C86">${ico('down2', 16)}</span><span><span class="t">${esc(x.note || 'Ingreso')}</span><span class="s">${dayLabel(x.date)} · a ${esc(meth(x.method))}${x.rec ? ' · recurrente' : ''}</span></span><span class="a pos">+${money(x.amount)}</span></button>`
-        : `<button class="row" data-act="tr-edit" data-id="${x.id}"><span class="dot" style="--c:#4F6275">${ico('arrows', 16)}</span><span><span class="t">${esc(x.note || 'Transferencia')}</span><span class="s">${dayLabel(x.date)} · ${esc(meth(x.from))}${x.to ? ' → ' + esc(meth(x.to)) : ''}</span></span><span class="a">${money(x.amount)}</span></button>`).join('')}</div>`
-        : `<p class="hint">No hay entradas ni transferencias en ${monthName(ui.month).toLowerCase()}. Usa los botones Ingreso o Transferir.</p>`);
+      const pr = period(), xs = [...S.incomes.map(x => ({ ...x, k: 'in' })), ...S.transfers.map(x => ({ ...x, k: 'tr' }))].filter(x => inPeriod(x.date, pr)).sort(byDate);
+      const rank = incomeRank(S, pr.from, pr.to);
+      return sheetTop('Entradas y transferencias', '<span></span>') + `<p class="sub" style="margin:0">${pr.label}</p>` +
+        (rank.length ? `<h2 class="sec">De dónde te entra más plata</h2><div class="list">${rank.map(g => `<button class="row" data-act="inc-group" data-key="${esc(g.key)}"><span class="dot" style="--c:#2E8C86">${ico('down2', 16)}</span>
+          <span><span class="t">${esc(g.name)}</span><span class="s">${g.count} ${g.count === 1 ? 'vez' : 'veces'} · promedio ${money(g.total / g.count)}</span></span><span class="a pos">+${money(g.total)}</span></button>`).join('')}</div>` : '') +
+        (xs.length ? `<h2 class="sec">Todas</h2><div class="list">${xs.map(flowRow).join('')}</div>`
+        : `<p class="hint">No hay entradas ni transferencias ${pr.words}. Usa los botones Ingreso o Transferir.</p>`);
+    },
+    group(key) {
+      const pr = period(), xs = S.incomes.filter(x => !x.debt && (norm(x.note) || 'ingreso') === key && inPeriod(x.date, pr)).sort(byDate);
+      return sheetTop(esc((xs[0]?.note || 'Ingreso').trim()), '<button class="link" data-act="panel" data-p="flows">Volver</button>') +
+        `<p class="big sm">${big(sum(xs, x => x.amount))}</p><p class="sub" style="margin:0">${xs.length} ${xs.length === 1 ? 'vez' : 'veces'} · ${pr.label}</p>
+        <div class="list">${xs.map(x => flowRow({ ...x, k: 'in' })).join('')}</div>`;
     },
   };
-  openSheet(kind === 'in' || kind === 'out' ? P.debts(kind) : P[kind]());
+  openSheet(kind === 'in' || kind === 'out' ? P.debts(kind) : kind.startsWith('group:') ? P.group(kind.slice(6)) : P[kind]());
 }
 
 // Más opciones de periodo: rápidos y un rango personalizado de fechas.
@@ -1070,6 +1101,7 @@ function onClick(e) {
       `<p class="hint">Arriendo, Netflix o tu sueldo: los creas una vez y se anotan solos cada mes el día que elijas.</p>`); break;
     case 'panel': openPanel(el.dataset.p); break;
     case 'period-more': openPeriods(); break;
+    case 'inc-group': openPanel('group:' + el.dataset.key); break;
     case 'period': ui.period = el.dataset.p; if (el.dataset.n) ui.days = +el.dataset.n; if (ui.period === 'mes' || ui.period === 'dias') ui.month = thisMonth(); if ($('#sheet').open) closeSheet(); render(); break;
     case 'real-date': S.settings.fakeToday = null; setClock(null); ui.month = thisMonth(); commit(); toast('Volviste a la fecha real'); break;
     case 'cats': openSheet(sheetTop('Tus sobres', '<button class="link" data-act="cat-edit">Nuevo</button>') + `<div class="list">${S.categories.map(c => `<button class="row" data-act="cat-edit" data-id="${c.id}">
@@ -1176,7 +1208,7 @@ function onSubmit(e) {
   commit();
 }
 
-if (typeof module !== 'undefined') module.exports = { spentIn, track, trackAll, money, digits, ymd, spentByCat, postRecurring, fresh, balance, worth, toTable, invest, cardDebt, cardAlerts, insights, search, tagsOf, goalPlan, own };
+if (typeof module !== 'undefined') module.exports = { incomeRank, norm, spentIn, track, trackAll, money, digits, ymd, spentByCat, postRecurring, fresh, balance, worth, toTable, invest, cardDebt, cardAlerts, insights, search, tagsOf, goalPlan, own };
 else {
   boot();
   // App instalada: funciona sin internet y pide al navegador no borrar los datos.

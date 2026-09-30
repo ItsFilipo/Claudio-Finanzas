@@ -127,3 +127,13 @@ console.log('ok periodos');
 assert.deepEqual(spentIn(q, '2026-10-01', '2026-11-03'), { comida: 300 }); // rango por días, incluye el día final
 assert.deepEqual(spentIn(q, '2026-10-04', '2026-11-02'), {});
 console.log('ok rangos por días');
+
+// Ranking de entradas: mismo nombre (sin importar tildes ni mayúsculas) se suma
+const { incomeRank } = require('./app.js');
+const ir = fresh(new Date(2026, 10, 1), false);
+ir.incomes.push({ amount: 50000, note: 'Papá', date: '2026-10-02' }, { amount: 30000, note: ' papa ', date: '2026-10-10' }, { amount: 1500000, note: 'Sueldo', date: '2026-10-30' },
+  { amount: 20000, note: 'Pago de Juan', date: '2026-10-11', debt: true }, { amount: 70000, note: 'PAPÁ', date: '2026-11-01' });
+const rk = incomeRank(ir, '2026-10', '2026-10');
+assert.deepEqual(rk.map(g => [g.name, g.total, g.count]), [['Sueldo', 1500000, 1], ['Papá', 80000, 2]]);
+assert.equal(incomeRank(ir, '0000', '9999')[1].total, 150000);
+console.log('ok ranking de entradas');
