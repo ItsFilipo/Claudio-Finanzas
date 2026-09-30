@@ -418,39 +418,21 @@ const VIEWS = {
   },
 
   dinero() {
-    const w = worth(S), now = new Date(), today = todayStr();
-    // Cuentas ordenadas por saldo, de mayor a menor; las que no llevan saldo van al final.
-    const accounts = S.methods.filter(m => !m.credit).sort((a, b) => (balance(S, b) ?? -Infinity) - (balance(S, a) ?? -Infinity)), cards = S.methods.filter(m => m.credit);
-    const dueTxt = d => { if (!d.due) return ''; const days = Math.round((new Date(d.due + 'T00:00') - new Date(today + 'T00:00')) / 864e5);
-      return days < 0 ? ` · <b class="neg">venció hace ${-days} ${-days === 1 ? 'día' : 'días'}</b>` : days <= 3 ? ` · <b class="warn">vence ${days === 0 ? 'hoy' : `en ${days} ${days === 1 ? 'día' : 'días'}`}</b>` : ` · vence el ${dayLabel(d.due).toLowerCase()}`; };
-    const debtRow = d => `<button class="row" data-act="debt-edit" data-id="${d.id}"><span class="dot" style="--c:${d.dir === 'in' ? '#2E8C86' : '#C2544A'}">${ico('user', 16)}</span>
-      <span><span class="t">${esc(d.who)}</span><span class="s">${esc(d.note || (d.dir === 'in' ? 'Te debe' : 'Le debes'))}${dueTxt(d)}</span></span><span class="a">${money(d.amount)}</span></button>`;
-    const debts = dir => { const xs = S.debts.filter(d => d.dir === dir).sort((x, y) => (x.due || '9').localeCompare(y.due || '9')); return xs.length ? `<div class="list">${xs.map(debtRow).join('')}</div>` : `<p class="hint">${dir === 'in' ? 'Nadie te debe plata.' : 'No le debes plata a nadie.'}</p>`; };
-    const flows = [...S.incomes.map(x => ({ ...x, k: 'in' })), ...S.transfers.map(x => ({ ...x, k: 'tr' }))].filter(x => x.date.startsWith(ui.month)).sort(byDate);
-    const flowRow = x => x.k === 'in'
-      ? `<button class="row" data-act="inc-edit" data-id="${x.id}"><span class="dot" style="--c:#2E8C86">${ico('down2', 16)}</span><span><span class="t">${esc(x.note || 'Ingreso')}</span><span class="s">${dayLabel(x.date)} · a ${esc(meth(x.method))}${x.rec ? ' · recurrente' : ''}</span></span><span class="a pos">+${money(x.amount)}</span></button>`
-      : `<button class="row" data-act="tr-edit" data-id="${x.id}"><span class="dot" style="--c:#4F6275">${ico('arrows', 16)}</span><span><span class="t">${esc(x.note || 'Transferencia')}</span><span class="s">${dayLabel(x.date)} · ${esc(meth(x.from))}${x.to ? ' → ' + esc(meth(x.to)) : ''}</span></span><span class="a">${money(x.amount)}</span></button>`;
+    const w = worth(S), cards = S.methods.filter(m => m.credit);
+    const nFlows = S.incomes.filter(x => x.date.startsWith(ui.month)).length + S.transfers.filter(x => x.date.startsWith(ui.month)).length;
+    const row = (panel, icon, color, t, sub, a, cls = '') => `<button class="row" data-act="panel" data-p="${panel}"><span class="dot" style="--c:${color}">${ico(icon, 16)}</span>
+      <span><span class="t">${t}</span>${sub ? `<span class="s">${sub}</span>` : ''}</span><span class="a ${cls}">${a}</span></button>`;
     return topBar('Dinero') + banners() + `
     <div class="list worth-list">
-      <div class="row"><span class="dot" style="--c:#4F6275">${ico('cash', 16)}</span><span><span class="t">Líquido</span></span><span class="a ${w.liquid < 0 ? 'neg' : ''}">${money(w.liquid)}</span></div>
-      ${[['trend', '#2E8C86', 'Inversiones', w.inv, 1], ['user', '#2E8C86', 'Te deben', w.owed, 1], ['user', '#C2544A', 'Debes', w.owe, -1], ['card', '#7A5AA6', 'Tarjetas de crédito', w.cards, -1]]
-        .filter(x => x[3]).map(([i, c, t, v, sg]) => `<div class="row"><span class="dot" style="--c:${c}">${ico(i, 16)}</span><span><span class="t">${t}</span></span><span class="a ${sg < 0 ? 'neg' : 'pos'}">${sg < 0 ? '−' : '+'}${money(v)}</span></div>`).join('')}
+      ${row('liquid', 'cash', '#4F6275', 'Líquido', `${S.methods.filter(m => !m.credit).length} cuentas`, money(w.liquid), w.liquid < 0 ? 'neg' : '')}
+      ${w.inv ? `<button class="row" data-act="tab" data-tab="inversiones"><span class="dot" style="--c:#2E8C86">${ico('trend', 16)}</span><span><span class="t">Inversiones</span></span><span class="a pos">+${money(w.inv)}</span></button>` : ''}
+      ${row('in', 'user', '#2E8C86', 'Te deben', `${S.debts.filter(d => d.dir === 'in').length || 'Nadie'} ${S.debts.filter(d => d.dir === 'in').length === 1 ? 'persona' : S.debts.some(d => d.dir === 'in') ? 'personas' : ''}`.trim(), (w.owed ? '+' : '') + money(w.owed), w.owed ? 'pos' : '')}
+      ${row('out', 'user', '#C2544A', 'Debes', `${S.debts.filter(d => d.dir === 'out').length || 'Nada'} ${S.debts.filter(d => d.dir === 'out').length === 1 ? 'deuda' : S.debts.some(d => d.dir === 'out') ? 'deudas' : ''}`.trim(), (w.owe ? '−' : '') + money(w.owe), w.owe ? 'neg' : '')}
+      ${row('cards', 'card', '#7A5AA6', 'Tarjetas de crédito', cards.length ? `${cards.length} ${cards.length === 1 ? 'tarjeta' : 'tarjetas'}` : 'Agrega tu tarjeta', (w.cards ? '−' : '') + money(w.cards), w.cards ? 'neg' : '')}
       <div class="row total"><span class="dot" style="--c:var(--accent)">${ico('target', 16)}</span><span><span class="t">Dinero total</span></span><span class="a ${w.total < 0 ? 'neg' : ''}">${money(w.total)}</span></div>
     </div>
     <div class="actions duo"><button class="btn" data-act="inc-edit">${ico('down2', 18)} Ingreso</button><button class="btn" data-act="tr-edit">${ico('arrows', 18)} Transferir</button></div>
-    <div class="sec-head"><h2 class="sec">Líquido · ${money(w.liquid)}</h2><button class="link" data-act="meth-edit">Nueva cuenta</button></div>
-    <div class="list">${accounts.map(m => { const b = balance(S, m); return `<button class="row" data-act="meth-edit" data-id="${m.id}"><span class="dot" style="--c:#4F6275">${ico('cash', 16)}</span>
-      <span><span class="t">${esc(m.name)}</span><span class="s">${b == null ? 'Toca para poner cuánto tienes' : 'Saldo'}</span></span><span class="a ${b < 0 ? 'neg' : ''}">${b == null ? '—' : money(b)}</span></button>`; }).join('')}</div>
-    <p class="hint" style="margin-top:8px">Los gastos, ingresos y transferencias se suman y restan solos de cada cuenta.</p>
-    <div class="sec-head"><h2 class="sec">Tarjetas de crédito${cards.length ? ' · ' + money(w.cards) : ''}</h2><button class="link" data-act="meth-edit" data-credit="1">Agregar</button></div>
-    ${cards.length ? `<div class="list">${cards.map(m => { const d = cardDebt(S, m), c = m.credit;
-      return `<button class="row" data-act="meth-edit" data-id="${m.id}"><span class="dot" style="--c:#7A5AA6">${ico('card', 16)}</span>
-        <span><span class="t">${esc(m.name)}</span><span class="s">${c.pay ? 'Pago día ' + c.pay : 'Tarjeta de crédito'}${c.cut ? ' · corte día ' + c.cut : ''}${c.limit ? ' · cupo libre ' + money(c.limit - d) : ''}</span></span><span class="a ${d > 0 ? 'neg' : ''}">${money(Math.max(0, d))}</span></button>`; }).join('')}</div>
-      <p class="hint" style="margin-top:8px">Para pagar la tarjeta, usa Transferir desde tu cuenta hacia la tarjeta.</p>`
-      : `<p class="hint">Agrega tu tarjeta para ver cuánto debes, tu cupo y recibir un aviso antes de la fecha de pago.</p>`}
-    ${flows.length ? `<h2 class="sec">Entradas y transferencias de ${monthName(ui.month).toLowerCase()}</h2><div class="list">${flows.map(flowRow).join('')}</div>` : ''}
-    <div class="sec-head"><h2 class="sec">Me deben · ${money(w.owed)}</h2><button class="link" data-act="debt-edit" data-dir="in">Agregar</button></div>${debts('in')}
-    <div class="sec-head"><h2 class="sec">Debo · ${money(w.owe)}</h2><button class="link" data-act="debt-edit" data-dir="out">Agregar</button></div>${debts('out')}`;
+    <div class="list" style="margin-top:14px">${row('flows', 'arrows', '#4F6275', `Entradas y transferencias`, monthName(ui.month), nFlows ? `${nFlows}` : '—')}</div>`;
   },
 
   inversiones() {
@@ -902,6 +884,47 @@ function wireChart(pts, compound) {
   svg.addEventListener('pointermove', show); svg.addEventListener('pointerdown', show); svg.addEventListener('pointerleave', hide);
 }
 
+// Ventanas de la pestaña Dinero: cuentas, tarjetas, deudas y entradas/transferencias.
+function openPanel(kind) {
+  const w = worth(S), today = todayStr();
+  const dueTxt = d => { if (!d.due) return ''; const days = Math.round((new Date(d.due + 'T00:00') - new Date(today + 'T00:00')) / 864e5);
+    return days < 0 ? ` · <b class="neg">venció hace ${-days} ${-days === 1 ? 'día' : 'días'}</b>` : days <= 3 ? ` · <b class="warn">vence ${days === 0 ? 'hoy' : `en ${days} ${days === 1 ? 'día' : 'días'}`}</b>` : ` · vence el ${dayLabel(d.due).toLowerCase()}`; };
+  const P = {
+    liquid() {
+      // Cuentas ordenadas por saldo, de mayor a menor; las que no llevan saldo van al final.
+      const accounts = S.methods.filter(m => !m.credit).sort((a, b) => (balance(S, b) ?? -Infinity) - (balance(S, a) ?? -Infinity));
+      return sheetTop('Líquido', '<button class="link" data-act="meth-edit">Nueva</button>') + `<p class="big sm">${big(w.liquid)}</p>` +
+        `<div class="list">${accounts.map(m => { const b = balance(S, m); return `<button class="row" data-act="meth-edit" data-id="${m.id}"><span class="dot" style="--c:#4F6275">${ico('cash', 16)}</span>
+          <span><span class="t">${esc(m.name)}</span><span class="s">${b == null ? 'Toca para poner cuánto tienes' : 'Saldo'}</span></span><span class="a ${b < 0 ? 'neg' : ''}">${b == null ? '—' : money(b)}</span></button>`; }).join('')}</div>
+        <p class="hint">Los gastos, ingresos y transferencias se suman y restan solos de cada cuenta.</p>`;
+    },
+    cards() {
+      const cards = S.methods.filter(m => m.credit);
+      return sheetTop('Tarjetas', '<button class="link" data-act="meth-edit" data-credit="1">Agregar</button>') + (cards.length ? `<p class="big sm">${big(w.cards)}</p>` +  `<div class="list">${cards.map(m => { const d = cardDebt(S, m), c = m.credit;
+        return `<button class="row" data-act="meth-edit" data-id="${m.id}"><span class="dot" style="--c:#7A5AA6">${ico('card', 16)}</span>
+          <span><span class="t">${esc(m.name)}</span><span class="s">${c.pay ? 'Pago día ' + c.pay : 'Tarjeta de crédito'}${c.cut ? ' · corte día ' + c.cut : ''}${c.limit ? ' · cupo libre ' + money(c.limit - d) : ''}</span></span><span class="a ${d > 0 ? 'neg' : ''}">${money(Math.max(0, d))}</span></button>`; }).join('')}</div>
+        <p class="hint">Para pagar la tarjeta, usa Transferir desde tu cuenta hacia la tarjeta.</p>`
+        : `<p class="hint">Agrega tu tarjeta para ver cuánto debes, tu cupo y recibir un aviso 5 días antes de la fecha de pago.</p>`);
+    },
+    debts(dir) {
+      const xs = S.debts.filter(d => d.dir === dir).sort((x, y) => (x.due || '9').localeCompare(y.due || '9'));
+      return sheetTop(dir === 'in' ? 'Te deben' : 'Debes', `<button class="link" data-act="debt-edit" data-dir="${dir}">Agregar</button>`) + `<p class="big sm">${big(dir === 'in' ? w.owed : w.owe)}</p>` +
+        (xs.length ? `<div class="list">${xs.map(d => `<button class="row" data-act="debt-edit" data-id="${d.id}"><span class="dot" style="--c:${dir === 'in' ? '#2E8C86' : '#C2544A'}">${ico('user', 16)}</span>
+          <span><span class="t">${esc(d.who)}</span><span class="s">${esc(d.note || (dir === 'in' ? 'Te debe' : 'Le debes'))}${dueTxt(d)}</span></span><span class="a">${money(d.amount)}</span></button>`).join('')}</div>
+          <p class="hint">Toca una deuda para registrar un abono o marcarla como pagada.</p>`
+        : `<p class="hint">${dir === 'in' ? 'Nadie te debe plata.' : 'No le debes plata a nadie.'}</p>`);
+    },
+    flows() {
+      const xs = [...S.incomes.map(x => ({ ...x, k: 'in' })), ...S.transfers.map(x => ({ ...x, k: 'tr' }))].filter(x => x.date.startsWith(ui.month)).sort(byDate);
+      return sheetTop('Entradas y transferencias', '<span></span>') + `<p class="sub" style="margin:0">${monthName(ui.month)}</p>` + (xs.length ? `<div class="list">${xs.map(x => x.k === 'in'
+        ? `<button class="row" data-act="inc-edit" data-id="${x.id}"><span class="dot" style="--c:#2E8C86">${ico('down2', 16)}</span><span><span class="t">${esc(x.note || 'Ingreso')}</span><span class="s">${dayLabel(x.date)} · a ${esc(meth(x.method))}${x.rec ? ' · recurrente' : ''}</span></span><span class="a pos">+${money(x.amount)}</span></button>`
+        : `<button class="row" data-act="tr-edit" data-id="${x.id}"><span class="dot" style="--c:#4F6275">${ico('arrows', 16)}</span><span><span class="t">${esc(x.note || 'Transferencia')}</span><span class="s">${dayLabel(x.date)} · ${esc(meth(x.from))}${x.to ? ' → ' + esc(meth(x.to)) : ''}</span></span><span class="a">${money(x.amount)}</span></button>`).join('')}</div>`
+        : `<p class="hint">No hay entradas ni transferencias en ${monthName(ui.month).toLowerCase()}. Usa los botones Ingreso o Transferir.</p>`);
+    },
+  };
+  openSheet(kind === 'in' || kind === 'out' ? P.debts(kind) : P[kind]());
+}
+
 // Copia al portapapeles; si el navegador no deja, muestra el texto para copiarlo a mano.
 function copyText(text, ok, title) {
   const fallback = () => openSheet(sheetTop(title) + `<p class="hint">Copia todo este texto.</p><textarea class="text" id="bk" readonly>${esc(text)}</textarea>`, '#bk');
@@ -978,6 +1001,7 @@ function onClick(e) {
       return `<button class="row" data-act="rec-edit" data-id="${r.id}"><span class="dot" style="--c:${c.color}">${ico('repeat', 16)}</span>
         <span><span class="t">${esc(r.name)}</span><span class="s">Cada día ${r.day} · ${r.kind === 'in' ? 'ingreso' : esc(c.name)} · ${esc(meth(r.method))}</span></span><span class="a ${r.kind === 'in' ? 'pos' : ''}">${r.kind === 'in' ? '+' : ''}${money(r.amount)}</span></button>`; }).join('')}</div>` : '') +
       `<p class="hint">Arriendo, Netflix o tu sueldo: los creas una vez y se anotan solos cada mes el día que elijas.</p>`); break;
+    case 'panel': openPanel(el.dataset.p); break;
     case 'cats': openSheet(sheetTop('Tus sobres', '<button class="link" data-act="cat-edit">Nuevo</button>') + `<div class="list">${S.categories.map(c => `<button class="row" data-act="cat-edit" data-id="${c.id}">
       <span class="dot" style="--c:${c.color}">${ico(c.icon, 16)}</span>
       <span><span class="t">${esc(c.name)}</span><span class="s">${money(spentByCat(S, thisMonth())[c.id] || 0)} este mes</span></span>${ico('right', 18)}</button>`).join('')}</div>
