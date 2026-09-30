@@ -42,3 +42,19 @@ The ground is a pale security-paper green. Ink and the accent are deep peso gree
 - **Signature moment:** when you save a gasto, its envelope's flap lifts, the seal hops, the amount counts down and the fill drops. This takes 0.8–0.9s with an ease-out curve.
 - **Everything else:** sheets rise in over 0.28s, and buttons have a small press-scale effect.
 - All motion turns off under `prefers-reduced-motion`.
+
+## Update: investments and polish
+- **Navigation**
+  - The bottom bar holds Sobres, Gastos, Dinero, Inversión and Metas.
+  - The active tab gets a tinted pill (accent at 18%) behind its icon.
+  - Ajustes is a sliders icon at the top right of every screen, and it has a back button.
+- **Top bar:** the title sits on the left and the actions sit on the right (`.top-actions`). The month title keeps its calendar chevron.
+- **Buttons:** 50px tall with a 14px radius. `:active` scales to 0.97. Primary buttons get an inset highlight and a soft drop shadow. `.link` is a pill-shaped tap target.
+- **FAB:** 58px tall, and its plus sits in a translucent circle.
+- **Inputs:** 52px tall, 16px text (this stops iOS from zooming in) and a 12px radius. Field labels use `--ink` at 700 weight.
+- **Rows:** 66px tall, with a 38px rounded-square `.dot` icon. `.list` has an 18px radius.
+- **Empty states:** a dashed 18px card with a short sentence and one primary action.
+- **Investment card (`.inv`):**
+  - Name in the display face, next to a `.pill` for the rate and frequency.
+  - Current value at 30px.
+  - A 3-column facts row (pago, al final, vence) separated from the rest by a hairline.

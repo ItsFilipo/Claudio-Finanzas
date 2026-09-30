@@ -16,11 +16,26 @@ function balance(state, m) {
   if (m.base == null) return null;
   return m.base - state.movements.filter(x => x.method === m.id && (x.t || 0) > m.baseT).reduce((a, x) => a + x.amount, 0);
 }
-function worth(state) {
+// Inversiones: la tasa es efectiva anual (EA); cada frecuencia usa su tasa equivalente.
+const FREQ = { d: [365, 'diario', 'Cada día'], w: [52, 'semanal', 'Cada semana'], m: [12, 'mensual', 'Cada mes'], e: [1, 'al vencimiento', 'Al vencimiento'] };
+function invest(x, now) {
+  const r = x.rate / 100, n = FREQ[x.freq][0], atEnd = x.freq === 'e';
+  const i = atEnd ? (1 + r) ** ((x.months || 12) / 12) - 1 : (1 + r) ** (1 / n) - 1;
+  const perPay = x.amount * i;
+  const N = atEnd ? 1 : x.months ? Math.round(n * x.months / 12) : 0;
+  const gain = !N ? null : atEnd ? perPay : x.compound ? x.amount * ((1 + i) ** N - 1) : perPay * N;
+  const [y, m, d] = x.start.split('-').map(Number), start = new Date(y, m - 1, d);
+  let done = atEnd ? 0 : Math.floor(Math.max(0, (now - start) / 864e5) / (365 / n));
+  if (N) done = Math.min(done, N);
+  return { i, perPay, N, gain, value: x.compound && !atEnd ? x.amount * (1 + i) ** done : x.amount, end: x.months ? new Date(y, m - 1 + x.months, d) : null };
+}
+
+function worth(state, now = new Date()) {
   const liquid = state.methods.reduce((a, m) => a + (balance(state, m) ?? 0), 0);
   const owed = state.debts.filter(d => d.dir === 'in').reduce((a, d) => a + d.amount, 0);
   const owe = state.debts.filter(d => d.dir === 'out').reduce((a, d) => a + d.amount, 0);
-  return { liquid, owed, owe, total: liquid + owed - owe };
+  const inv = (state.investments || []).reduce((a, x) => a + invest(x, now).value, 0);
+  return { liquid, inv, owed, owe, total: liquid + inv + owed - owe };
 }
 // Gastos como tabla para pegar en Excel o Google Sheets.
 const toTable = state => ['Fecha\tSobre\tNota\tMétodo\tValor', ...[...state.movements].sort((a, b) => a.date.localeCompare(b.date)).map(m =>
@@ -67,7 +82,7 @@ function fresh(now, examples) {
       ['otros', 'Otros', 'dots', '#7C8163', 0],
     ].map(([id, name, icon, color, budget]) => ({ id, name, icon, color, budget })),
     methods: ['Efectivo', 'Nequi', 'Bancolombia', 'Nu'].map((name, i) => ({ id: 'm' + i, name })),
-    movements: [], goals: [], recurring: [], debts: [],
+    movements: [], goals: [], recurring: [], debts: [], investments: [],
     settings: { theme: 'system', method: 'm0' },
   };
   if (examples) {
@@ -125,6 +140,7 @@ const ICONS = {
   x: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
   left: '<path d="m15 18-6-6 6-6"/>',
   down: '<path d="m6 9 6 6 6-6"/>',
+  trend: '<path d="m22 7-8.5 8.5-5-5L2 17"/><path d="M16 7h6v6"/>',
   right: '<path d="m9 18 6-6-6-6"/>',
 };
 const CAT_ICONS = ['utensils', 'bus', 'home', 'zap', 'glass', 'heart', 'cart', 'coffee', 'car', 'gift',
@@ -171,11 +187,12 @@ function boot() {
   S = store.load() || fresh(new Date(), true);
   S.movements = S.movements.filter(m => m.date >= START); // borra lo anterior a octubre 2026
   S.debts ||= [];
+  S.investments ||= [];
   S.categories.forEach(c => { c.budget = 0; }); // por ahora sin presupuestos: solo se registra lo gastado
   postRecurring(S, new Date());
   ui = { view: 'sobres', month: thisMonth() };
   $('#fab').innerHTML = `${ico('plus', 22)} Anotar gasto`;
-  $('#tabs').innerHTML = [['sobres', 'Sobres', 'mail'], ['movs', 'Gastos', 'list'], ['dinero', 'Dinero', 'cash'], ['metas', 'Metas', 'target'], ['ajustes', 'Ajustes', 'sliders']]
+  $('#tabs').innerHTML = [['sobres', 'Sobres', 'mail'], ['movs', 'Gastos', 'list'], ['dinero', 'Dinero', 'cash'], ['inversiones', 'Inversión', 'trend'], ['metas', 'Metas', 'target']]
     .map(([v, l, i]) => `<button data-act="tab" data-tab="${v}">${ico(i, 22)}<span>${l}</span></button>`).join('');
   applyTheme();
   commit();
@@ -213,11 +230,16 @@ function render() {
   if (ui.flash) runFlash();
 }
 
+const gear = () => `<button class="icon-btn" data-act="tab" data-tab="ajustes" aria-label="Ajustes">${ico('sliders')}</button>`;
 const monthBar = () => `<header class="top">
-  <button class="icon-btn" data-act="month" data-k="-1" aria-label="Mes anterior" ${ui.month <= START ? 'disabled' : ''}>${ico('left')}</button>
   <h1><button class="title-btn" data-act="year" data-y="${ui.month.slice(0, 4)}" aria-label="Ver calendario del año">${monthName(ui.month)} ${ico('down', 18)}</button></h1>
-  <button class="icon-btn" data-act="month" data-k="1" aria-label="Mes siguiente" ${ui.month >= thisMonth() ? 'disabled' : ''}>${ico('right')}</button>
+  <div class="top-actions">
+    <button class="icon-btn" data-act="month" data-k="-1" aria-label="Mes anterior" ${ui.month <= START ? 'disabled' : ''}>${ico('left')}</button>
+    <button class="icon-btn" data-act="month" data-k="1" aria-label="Mes siguiente" ${ui.month >= thisMonth() ? 'disabled' : ''}>${ico('right')}</button>
+    ${gear()}
+  </div>
 </header>`;
+const topBar = (title, extra = '') => `<header class="top"><h1>${title}</h1><div class="top-actions">${extra}${gear()}</div></header>`;
 
 const banners = () =>
   (S.movements.some(m => m.ex) || S.goals.some(g => g.ex)
@@ -281,15 +303,38 @@ const VIEWS = {
     const debtRow = d => `<button class="row" data-act="debt-edit" data-id="${d.id}"><span class="dot" style="--c:${d.dir === 'in' ? '#2E8C86' : '#C2544A'}">${ico('user', 16)}</span>
       <span><span class="t">${esc(d.who)}</span><span class="s">${esc(d.note || (d.dir === 'in' ? 'Te debe' : 'Le debes'))}</span></span><span class="a">${money(d.amount)}</span></button>`;
     const debts = dir => { const xs = S.debts.filter(d => d.dir === dir); return xs.length ? `<div class="list">${xs.map(debtRow).join('')}</div>` : `<p class="hint">${dir === 'in' ? 'Nadie te debe plata.' : 'No le debes plata a nadie.'}</p>`; };
-    return `<header class="top"><h1>Dinero</h1></header>` + banners() + `
+    return topBar('Dinero') + banners() + `
     <section class="summary"><p class="big ${w.total < 0 ? 'neg' : ''}">${money(w.total)}</p>
-      <p class="sub">tu dinero total: líquido ${money(w.liquid)}${w.owed ? ' + te deben ' + money(w.owed) : ''}${w.owe ? ' − debes ' + money(w.owe) : ''}</p></section>
+      <p class="sub">tu dinero total: líquido ${money(w.liquid)}${w.inv ? ' + inversiones ' + money(w.inv) : ''}${w.owed ? ' + te deben ' + money(w.owed) : ''}${w.owe ? ' − debes ' + money(w.owe) : ''}</p></section>
     <div class="sec-head"><h2 class="sec">Dinero líquido · ${money(w.liquid)}</h2><button class="link" data-act="meth-edit">Nueva cuenta</button></div>
     <div class="list">${S.methods.map(m => { const b = balance(S, m); return `<button class="row" data-act="meth-edit" data-id="${m.id}"><span class="dot" style="--c:#4F6275">${ico('card', 16)}</span>
       <span><span class="t">${esc(m.name)}</span><span class="s">${b == null ? 'Toca para poner cuánto tienes' : 'Saldo'}</span></span><span class="a ${b < 0 ? 'neg' : ''}">${b == null ? '—' : money(b)}</span></button>`; }).join('')}</div>
     <p class="hint" style="margin-top:8px">Cada gasto se descuenta solo de la cuenta con que pagaste. Cuando te entre plata, toca la cuenta y actualiza el saldo.</p>
     <div class="sec-head"><h2 class="sec">Me deben · ${money(w.owed)}</h2><button class="link" data-act="debt-edit" data-dir="in">Agregar</button></div>${debts('in')}
     <div class="sec-head"><h2 class="sec">Debo · ${money(w.owe)}</h2><button class="link" data-act="debt-edit" data-dir="out">Agregar</button></div>${debts('out')}`;
+  },
+
+  inversiones() {
+    const now = new Date(), xs = S.investments.map(x => ({ x, c: invest(x, now) }));
+    const head = topBar('Inversiones', `<button class="btn small" data-act="inv-edit">${ico('plus', 16)} Nueva</button>`) + banners();
+    if (!xs.length) return head + `<div class="empty"><p>Registra un CDT, una cajita o cualquier inversión con su tasa EA y mira cuánto te paga y cuánto vas a ganar.</p>
+      <button class="btn primary" data-act="inv-edit">${ico('plus', 18)} Agregar inversión</button></div>`;
+    const gain = sum(xs, o => o.c.gain || 0);
+    const card = ({ x, c }) => {
+      const atEnd = x.freq === 'e', f = FREQ[x.freq];
+      const pay = atEnd ? ['Al vencimiento te pagan', c.perPay] : [`${f[2]} ${x.compound ? 'se suman' : 'te pagan'}`, c.perPay];
+      return `<button class="inv" data-act="inv-edit" data-id="${x.id}">
+        <span class="inv-head"><span class="inv-name">${esc(x.name)}</span><span class="pill">${String(x.rate).replace('.', ',')}% EA · ${f[1]}</span></span>
+        <span class="inv-amt">${money(c.value)}</span>
+        <span class="inv-facts">
+          <span><small>${pay[0]}</small><b>${money(pay[1])}</b></span>
+          <span><small>Al final ganas</small><b>${c.gain == null ? '—' : money(c.gain)}</b></span>
+          <span><small>Vence</small><b>${c.end ? `${c.end.getDate()} ${c.end.toLocaleDateString('es-CO', { month: 'short' }).replace('.', '')} ${c.end.getFullYear()}` : 'Sin fecha'}</b></span>
+        </span></button>`;
+    };
+    return head + `<section class="summary"><p class="big">${money(sum(xs, o => o.c.value))}</p>
+      <p class="sub">invertido${gain ? ` · vas a ganar ${money(gain)} en total` : ''}</p></section>
+      <div class="invs">${xs.map(card).join('')}</div>`;
   },
 
   metas() {
@@ -302,14 +347,14 @@ const VIEWS = {
         <div class="goal-foot"><span>${g.saved >= g.target ? '¡Lo lograste!' : `${p}% · faltan ${money(g.target - g.saved)}`}</span><button class="btn small primary" data-act="goal-add" data-id="${g.id}">Abonar</button></div>
       </article>`;
     };
-    return `<header class="top"><h1>Metas</h1><button class="btn small" data-act="goal-edit">${ico('plus', 16)} Nueva meta</button></header>` + banners() +
+    return topBar('Metas', `<button class="btn small" data-act="goal-edit">${ico('plus', 16)} Nueva</button>`) + banners() +
       (S.goals.length ? `<div class="goals">${S.goals.map(card).join('')}</div>`
         : `<p class="empty">Aún no tienes metas. Crea una para ahorrar para algo que quieras: un viaje, un computador o un fondo de emergencia.</p>`);
   },
 
   ajustes() {
     const th = S.settings.theme;
-    return `<header class="top"><h1>Ajustes</h1></header>
+    return `<header class="top"><div class="top-back"><button class="icon-btn" data-act="tab" data-tab="${ui.back || 'sobres'}" aria-label="Volver">${ico('left')}</button><h1>Ajustes</h1></div></header>
     <section class="set"><h2 class="sec" style="margin-block:12px 10px">Apariencia</h2>
       <div class="seg" role="radiogroup" aria-label="Tema">${[['system', 'Automático'], ['light', 'Claro'], ['dark', 'Oscuro']]
         .map(([v, l]) => `<label><input type="radio" name="theme" value="${v}" ${th === v ? 'checked' : ''}><span>${l}</span></label>`).join('')}</div>
@@ -500,6 +545,23 @@ function openDebt(id, dir) {
     ${id ? `<div class="actions"><button type="button" class="btn" data-act="debt-del" data-id="${id}">${inn ? 'Ya me pagó' : 'Ya pagué'}</button><button class="btn primary">Guardar</button></div>` : actions()}</form>`, id ? null : 'input[name=who]');
 }
 
+function openInv(id) {
+  const x = id ? S.investments.find(o => o.id === id) : { name: '', amount: 0, rate: '', freq: 'm', compound: false, start: todayStr(), months: '' };
+  const radios = (name, opts, v) => `<div class="chips">${opts.map(([k, l]) => `<label class="chip"><input type="radio" name="${name}" value="${k}" ${k === v ? 'checked' : ''}><span>${l}</span></label>`).join('')}</div>`;
+  openSheet(sheetTop(id ? 'Editar inversión' : 'Nueva inversión') + `<form class="form" data-form="inv" data-id="${id || ''}">
+    ${textField('name', 'Nombre', x.name)}
+    ${moneyField('amount', 'Cuánto invertiste', x.amount, '0')}
+    <label class="field"><span>Tasa efectiva anual (% EA)</span><input class="text" name="rate" inputmode="decimal" autocomplete="off" required value="${String(x.rate).replace('.', ',')}" placeholder="Ej. 9 o 10,5"></label>
+    <fieldset class="field"><legend>¿Cada cuánto paga intereses?</legend>${radios('freq', [['d', 'Diario'], ['w', 'Semanal'], ['m', 'Mensual'], ['e', 'Al vencimiento']], x.freq)}</fieldset>
+    <fieldset class="field"><legend>Los intereses</legend>${radios('mode', [['sum', 'Se suman a la inversión'], ['pay', 'Me los pagan aparte']], x.compound ? 'sum' : 'pay')}</fieldset>
+    <div class="two even">
+      <label class="field"><span>Desde</span><input class="text" type="date" name="start" value="${x.start}" required></label>
+      <label class="field"><span>Plazo (meses)</span><input class="text" type="number" name="months" min="1" max="600" inputmode="numeric" value="${x.months || ''}" placeholder="Sin plazo"></label>
+    </div>
+    <p class="hint" id="inv-hint">Si eliges "al vencimiento", pon el plazo.</p>
+    ${actions(id, 'inv-del')}</form>`, id ? null : 'input[name=name]');
+}
+
 // Copia al portapapeles; si el navegador no deja, muestra el texto para copiarlo a mano.
 function copyText(text, ok, title) {
   const fallback = () => openSheet(sheetTop(title) + `<p class="hint">Copia todo este texto.</p><textarea class="text" id="bk" readonly>${esc(text)}</textarea>`, '#bk');
@@ -532,7 +594,7 @@ function onClick(e) {
   if (el.hasAttribute('data-confirm') && !armed(el)) return;
   const id = el.dataset.id;
   switch (el.dataset.act) {
-    case 'tab': ui.view = el.dataset.tab; scrollTo(0, 0); render(); break;
+    case 'tab': if (el.dataset.tab === 'ajustes' && ui.view !== 'ajustes') ui.back = ui.view; ui.view = el.dataset.tab; scrollTo(0, 0); render(); break;
     case 'month': ui.month = shiftMonth(ui.month, +el.dataset.k); render(); break;
     case 'year': openYear(+el.dataset.y); break;
     case 'pick-month': ui.month = el.dataset.m; closeSheet(); render(); break;
@@ -561,6 +623,8 @@ function onClick(e) {
     case 'export': copyText(toTable(S), 'Gastos copiados. Pégalos en una hoja de Excel o Google Sheets.', 'Tus gastos'); break;
     case 'meth-edit': openMeth(id); break;
     case 'debt-edit': openDebt(id, el.dataset.dir); break;
+    case 'inv-edit': openInv(id); break;
+    case 'inv-del': S.investments = S.investments.filter(x => x.id !== id); closeSheet(); commit(); toast('Inversión eliminada'); break;
     case 'debt-del': S.debts = S.debts.filter(d => d.id !== id); closeSheet(); commit(); toast('Deuda saldada'); break;
     case 'restore':
       openSheet(sheetTop('Restaurar respaldo') + `<form class="form" data-form="restore"><p class="hint" id="rs-hint">Pega aquí el texto de un respaldo. Reemplaza todo lo que hay ahora.</p>
@@ -580,6 +644,17 @@ function onSubmit(e) {
       // Solo reinicia el saldo si escribiste uno distinto; así los gastos ya anotados siguen descontándose.
       const v = bal != null && bal !== (m ? balance(S, m) : null) ? { base: bal, baseT: Date.now() } : m ? {} : { base: null, baseT: 0 };
       upsert(S.methods, { name: d.name.trim(), ...v });
+      break;
+    }
+    case 'inv': {
+      const months = digits(d.months), rate = parseFloat(String(d.rate).replace(',', '.')) || 0;
+      if ((d.freq === 'e' && !months) || !rate) {
+        const h = $('#inv-hint');
+        h.textContent = !rate ? 'Escribe la tasa EA, por ejemplo 9.' : 'Para "al vencimiento" necesito el plazo en meses.';
+        h.className = 'hint err';
+        return;
+      }
+      upsert(S.investments, { name: d.name.trim(), amount: digits(d.amount), rate, freq: d.freq, compound: d.mode === 'sum', start: d.start, months: months || null });
       break;
     }
     case 'debt': upsert(S.debts, { who: d.who.trim(), amount: digits(d.amount), note: d.note.trim(), dir: f.dataset.dir }); break;
@@ -613,7 +688,7 @@ function onSubmit(e) {
   commit();
 }
 
-if (typeof module !== 'undefined') module.exports = { money, digits, ymd, spentByCat, postRecurring, fresh, balance, worth, toTable };
+if (typeof module !== 'undefined') module.exports = { money, digits, ymd, spentByCat, postRecurring, fresh, balance, worth, toTable, invest };
 else {
   boot();
   // App instalada: funciona sin internet y pide al navegador no borrar los datos.

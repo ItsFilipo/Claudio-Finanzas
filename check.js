@@ -33,6 +33,23 @@ w.movements.push({ amount: 30000, cat: 'comida', method: 'm1', date: '2026-10-05
 assert.equal(balance(w, w.methods[1]), 70000);
 assert.equal(balance(w, w.methods[0]), null);
 w.debts.push({ amount: 50000, dir: 'in' }, { amount: 10000, dir: 'out' });
-assert.deepEqual(worth(w), { liquid: 70000, owed: 50000, owe: 10000, total: 110000 });
+assert.deepEqual(worth(w), { liquid: 70000, inv: 0, owed: 50000, owe: 10000, total: 110000 });
 assert.equal(toTable(w).split('\n')[2], '2026-10-05\tComida\tAlmuerzo\tNequi\t30000');
 console.log('ok saldos');
+
+// Inversiones: $1.000.000 al 9% EA
+const { invest, ymd } = require('./app.js');
+const cdt = { amount: 1000000, rate: 9, freq: 'm', compound: false, start: '2026-10-01', months: 12 };
+const c1 = invest(cdt, new Date(2026, 11, 15));
+assert.equal(Math.round(c1.perPay), 7207); // cada mes te pagan ~$7.207
+assert.equal(Math.round(c1.gain), 86488); // 12 pagos aparte
+assert.equal(c1.value, 1000000); // pagados aparte: el capital no cambia
+assert.equal(ymd(c1.end), '2027-10-01');
+const c2 = invest({ ...cdt, compound: true }, new Date(2027, 11, 1));
+assert.equal(Math.round(c2.gain), 90000); // compuesto 12 meses = 9% exacto
+assert.equal(Math.round(c2.value), 1090000); // ya vencido: vale capital + intereses
+const c3 = invest({ ...cdt, freq: 'e', months: 6 }, new Date(2026, 10, 1));
+assert.equal(Math.round(c3.gain), 44031); // al vencimiento a 6 meses
+const w2 = fresh(new Date(2026, 9, 5), false); w2.investments.push(cdt);
+assert.equal(worth(w2, new Date(2026, 9, 5)).total, 1000000);
+console.log('ok inversiones');
