@@ -110,3 +110,9 @@ trackAll(z);
 assert.equal(balance(z, z.methods[1]), 300000);
 assert.equal(worth(z).liquid, 300000);
 console.log('ok ingreso sin saldo');
+
+// Pago mensual el mismo día de cada mes (también en febrero)
+const mm = { amount: 5000000, rate: 9, freq: 'm', compound: false, start: '2026-10-01', months: 6 };
+assert.equal(invest(mm, new Date(2027, 1, 28)).earned, invest(mm, new Date(2027, 1, 1)).earned); // feb 1 y feb 28: 4 pagos
+assert.ok(invest(mm, new Date(2027, 2, 1)).earned > invest(mm, new Date(2027, 1, 28)).earned); // 1 de marzo: 5 pagos
+console.log('ok pagos mensuales');

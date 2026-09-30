@@ -60,9 +60,15 @@ function invest(x, now) {
   const N = atEnd ? 1 : x.months ? Math.round(n * x.months / 12) : 0;
   const gain = !N ? null : atEnd ? perPay : x.compound ? x.amount * ((1 + i) ** N - 1) : perPay * N;
   const [y, m, d] = x.start.split('-').map(Number), start = new Date(y, m - 1, d);
-  let done = atEnd ? 0 : Math.floor(Math.max(0, (now - start) / 864e5) / (365 / n));
+  // Pagos ya hechos: los mensuales caen el mismo día de cada mes; los demás cada 1/365 o 1/52 de año.
+  const monthsGone = (now.getFullYear() - y) * 12 + now.getMonth() - (m - 1) - (now.getDate() < d ? 1 : 0);
+  let done = atEnd ? 0 : x.freq === 'm' ? Math.max(0, monthsGone) : Math.floor(Math.max(0, (now - start) / 864e5) / (365 / n));
   if (N) done = Math.min(done, N);
-  return { i, perPay, N, gain, value: x.compound && !atEnd ? x.amount * (1 + i) ** done : x.amount, end: x.months ? new Date(y, m - 1 + x.months, d) : null };
+  const end = x.months ? new Date(y, m - 1 + x.months, d) : null;
+  const value = x.compound && !atEnd ? x.amount * (1 + i) ** done : x.amount;
+  // Ganado hasta la fecha: lo que ya se sumó (compuesto), lo que ya te pagaron (aparte) o todo al vencer.
+  const earned = atEnd ? (end && now >= end ? perPay : 0) : x.compound ? value - x.amount : perPay * done;
+  return { i, perPay, N, gain, value, earned, start, end };
 }
 
 function worth(state, now = new Date()) {
@@ -456,7 +462,7 @@ const VIEWS = {
       const atEnd = x.freq === 'e', f = FREQ[x.freq];
       // Compuesto: lo que suma hoy se calcula sobre el valor actual (capital + intereses ya sumados).
       const pay = atEnd ? ['Al vencimiento te pagan', c.perPay] : x.compound ? [`${f[2]} se suman hoy`, c.value * c.i] : [`${f[2]} te pagan`, c.perPay];
-      return `<button class="inv" data-act="inv-edit" data-id="${x.id}">
+      return `<button class="inv" data-act="inv-detail" data-id="${x.id}">
         <span class="inv-head"><span class="inv-name">${esc(x.name)}</span><span class="pill">${String(x.rate).replace('.', ',')}% EA · ${f[1]}${x.ret ? ' · con retención' : ''}</span></span>
         <span class="inv-amt">${big(c.value)}</span>
         <span class="inv-facts">
@@ -828,6 +834,73 @@ function openInv(id) {
     ${actions(id, 'inv-del')}</form>`, id ? null : 'input[name=name]');
 }
 
+// Detalle de una inversión: gráfica de crecimiento, datos clave y tabla mes a mes.
+function openInvDetail(id) {
+  const x = S.investments.find(o => o.id === id), now = new Date(), c = invest(x, now);
+  const months = x.months || 12, at = k => new Date(c.start.getFullYear(), c.start.getMonth() + k, c.start.getDate());
+  const pts = Array.from({ length: months + 1 }, (_, k) => ({ d: at(k), v: x.amount + invest(x, at(k)).earned }));
+  const days = c.end ? Math.ceil((c.end - new Date(now.getFullYear(), now.getMonth(), now.getDate())) / 864e5) : null;
+  const n = FREQ[x.freq][0], realEA = x.freq === 'e' ? ((1 + c.i) ** (12 / (x.months || 12)) - 1) * 100 : ((1 + c.i) ** n - 1) * 100;
+  const fmtD = d => `${d.getDate()} ${d.toLocaleDateString('es-CO', { month: 'short' }).replace('.', '')} ${d.getFullYear()}`;
+  const tile = (label, value, sub = '') => `<div class="tile"><small>${label}</small><b>${value}</b>${sub ? `<span>${sub}</span>` : ''}</div>`;
+  const rows = pts.slice(1).map((p, k) => `<tr><td>${fmtD(p.d)}</td><td class="pos">+${money(p.v - pts[k].v)}</td><td>${money(p.v)}</td></tr>`).join('');
+  openSheet(sheetTop(esc(x.name), `<button class="link" data-act="inv-edit" data-id="${id}">Editar</button>`) + `
+    <div><p class="big sm">${big(x.amount + c.earned)}</p><p class="sub">${String(x.rate).replace('.', ',')}% EA · ${FREQ[x.freq][1]} · ${x.compound && x.freq !== 'e' ? 'los intereses se suman' : 'te pagan los intereses'}</p></div>
+    <figure class="chart" id="inv-chart" aria-label="Crecimiento de ${esc(x.name)}">${growthChart(pts, x.amount, now)}<div class="tip" hidden></div></figure>
+    <div class="tiles">
+      ${tile('Llevas ganado', money(c.earned), 'hasta hoy')}
+      ${tile('Vas a ganar', c.gain == null ? '—' : money(c.gain), c.end ? 'al ' + fmtD(c.end) : 'en total')}
+      ${tile('Faltan', days == null ? 'Sin plazo' : days > 0 ? `${days} días` : 'Ya venció', c.end ? 'para vencer' : '')}
+      ${tile('Rentabilidad real', `${realEA.toFixed(2).replace('.', ',')}%`, x.ret ? 'EA, con retención' : 'EA')}
+    </div>
+    <h2 class="sec">Mes a mes</h2>
+    <div class="table-wrap"><table class="months"><thead><tr><th>Fecha</th><th>Intereses</th><th>Valor</th></tr></thead><tbody>${rows}</tbody></table></div>`);
+  wireChart(pts);
+}
+
+// Gráfica SVG: área del valor, línea punteada de lo invertido y un punto en "Hoy".
+function growthChart(pts, base, now) {
+  const W = 340, H = 170, L = 8, R = 8, T = 22, B = 22;
+  const t0 = +pts[0].d, t1 = +pts.at(-1).d, hi = Math.max(pts.at(-1).v, base + 1), lo = base - (hi - base) * .3;
+  const X = t => L + (t - t0) / (t1 - t0) * (W - L - R), Y = v => T + (1 - (v - lo) / (hi - lo)) * (H - T - B);
+  const line = pts.map((p, k) => `${k ? 'L' : 'M'}${X(+p.d).toFixed(1)},${Y(p.v).toFixed(1)}`).join('');
+  const inRange = +now >= t0 && +now <= t1;
+  const today = inRange ? pts.reduce((a, p) => (+p.d <= +now ? p : a), pts[0]) : null;
+  const short = d => d.toLocaleDateString('es-CO', { month: 'short', year: '2-digit' }).replace('.', '');
+  return `<svg viewBox="0 0 ${W} ${H}" role="img">
+    <defs><linearGradient id="gfill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--accent)" stop-opacity=".28"/><stop offset="1" stop-color="var(--accent)" stop-opacity="0"/></linearGradient></defs>
+    <line x1="${L}" x2="${W - R}" y1="${Y(base)}" y2="${Y(base)}" class="base"/>
+    <text x="${W - R}" y="${Y(base) + 15}" class="lbl" text-anchor="end">Invertiste ${money(base)}</text>
+    <path d="${line}L${X(t1)},${Y(lo)}L${X(t0)},${Y(lo)}Z" fill="url(#gfill)"/>
+    <path d="${line}" class="curve"/>
+    <text x="${W - R}" y="${Y(pts.at(-1).v) - 8}" class="lbl end" text-anchor="end">${money(pts.at(-1).v)}</text>
+    ${today ? `<line x1="${X(+now)}" x2="${X(+now)}" y1="${T - 6}" y2="${H - B}" class="now"/><text x="${X(+now)}" y="${T - 10}" class="lbl" text-anchor="middle">Hoy</text>` : ''}
+    <text x="${L}" y="${H - 6}" class="axis">${short(pts[0].d)}</text><text x="${W - R}" y="${H - 6}" class="axis" text-anchor="end">${short(pts.at(-1).d)}</text>
+    <line class="cross" y1="${T}" y2="${H - B}" visibility="hidden"/><circle class="cdot" r="5" visibility="hidden"/>
+    <rect x="0" y="0" width="${W}" height="${H}" fill="transparent" class="hit"/>
+  </svg>`;
+}
+
+// Al pasar el dedo o el mouse: línea vertical, punto y el valor de ese mes.
+function wireChart(pts) {
+  const fig = $('#inv-chart'), svg = fig.querySelector('svg'), tip = fig.querySelector('.tip');
+  const cross = svg.querySelector('.cross'), dot = svg.querySelector('.cdot'), curve = svg.querySelector('.curve');
+  const xs = [...curve.getAttribute('d').matchAll(/[ML]([\d.]+),([\d.]+)/g)].map(m => [+m[1], +m[2]]);
+  const show = e => {
+    const r = svg.getBoundingClientRect(), vx = (e.clientX - r.left) / r.width * 340;
+    let k = 0; xs.forEach(([x], j) => { if (Math.abs(x - vx) < Math.abs(xs[k][0] - vx)) k = j; });
+    const [x, y] = xs[k];
+    for (const [a, v] of [['x1', x], ['x2', x]]) cross.setAttribute(a, v);
+    dot.setAttribute('cx', x); dot.setAttribute('cy', y);
+    cross.setAttribute('visibility', 'visible'); dot.setAttribute('visibility', 'visible');
+    tip.hidden = false;
+    tip.innerHTML = `<b>${money(pts[k].v)}</b><span>${pts[k].d.getDate()} ${pts[k].d.toLocaleDateString('es-CO', { month: 'short', year: 'numeric' }).replace('.', '')}</span>`;
+    tip.style.left = `${Math.min(Math.max(x / 340 * 100, 18), 82)}%`;
+  };
+  const hide = () => { tip.hidden = true; cross.setAttribute('visibility', 'hidden'); dot.setAttribute('visibility', 'hidden'); };
+  svg.addEventListener('pointermove', show); svg.addEventListener('pointerdown', show); svg.addEventListener('pointerleave', hide);
+}
+
 // Copia al portapapeles; si el navegador no deja, muestra el texto para copiarlo a mano.
 function copyText(text, ok, title) {
   const fallback = () => openSheet(sheetTop(title) + `<p class="hint">Copia todo este texto.</p><textarea class="text" id="bk" readonly>${esc(text)}</textarea>`, '#bk');
@@ -913,6 +986,7 @@ function onClick(e) {
     case 'debt-full': payDebt(id, S.debts.find(x => x.id === id).amount, el.closest('form').elements.method.value); break;
     case 'debt-edit': openDebt(id, el.dataset.dir); break;
     case 'inv-edit': openInv(id); break;
+    case 'inv-detail': openInvDetail(id); break;
     case 'inv-del': S.investments = S.investments.filter(x => x.id !== id); closeSheet(); commit(); toast('Inversión eliminada'); break;
     case 'debt-del': S.debts = S.debts.filter(d => d.id !== id); closeSheet(); commit(); toast('Deuda eliminada'); break;
     case 'restore':

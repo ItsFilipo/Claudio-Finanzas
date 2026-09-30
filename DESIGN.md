@@ -77,3 +77,11 @@ The ground is a pale security-paper green. Ink and the accent are deep peso gree
 - **Dividir:** a `<details class="split">` card inside the add sheet.
 - **Deudas:** the abono form sits in a raised `.pay-box` card above the details form.
 - **Row subtitles** now wrap to 2 lines (line-clamp) so key facts like the card payment day stay visible.
+
+## Update: investment detail
+- **Opening it:** tapping an investment card opens a sheet with the current value, a growth chart, four `.tile` stats (earned so far, total gain, days left, real EA) and a month-by-month `.months` table.
+- **Growth chart:** a single-series SVG. The curve is a 2.5px `--accent` line over an accent area fading to transparent.
+  - What you invested is a dashed `--ink-2` baseline, labeled directly at the right.
+  - A thin "Hoy" rule marks today.
+  - Pointer or touch shows a crosshair, a ringed dot and an ink tooltip.
+  - All text uses ink tokens, never the series color.
