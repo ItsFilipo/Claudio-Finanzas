@@ -614,4 +614,9 @@ function onSubmit(e) {
 }
 
 if (typeof module !== 'undefined') module.exports = { money, digits, ymd, spentByCat, postRecurring, fresh, balance, worth, toTable };
-else boot();
+else {
+  boot();
+  // App instalada: funciona sin internet y pide al navegador no borrar los datos.
+  if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
+  navigator.storage?.persist?.().catch(() => {});
+}
