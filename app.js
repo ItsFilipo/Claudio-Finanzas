@@ -454,7 +454,8 @@ const VIEWS = {
     const gain = sum(xs, o => o.c.gain || 0);
     const card = ({ x, c }) => {
       const atEnd = x.freq === 'e', f = FREQ[x.freq];
-      const pay = atEnd ? ['Al vencimiento te pagan', c.perPay] : [`${f[2]} ${x.compound ? 'se suman' : 'te pagan'}`, c.perPay];
+      // Compuesto: lo que suma hoy se calcula sobre el valor actual (capital + intereses ya sumados).
+      const pay = atEnd ? ['Al vencimiento te pagan', c.perPay] : x.compound ? [`${f[2]} se suman hoy`, c.value * c.i] : [`${f[2]} te pagan`, c.perPay];
       return `<button class="inv" data-act="inv-edit" data-id="${x.id}">
         <span class="inv-head"><span class="inv-name">${esc(x.name)}</span><span class="pill">${String(x.rate).replace('.', ',')}% EA · ${f[1]}${x.ret ? ' · con retención' : ''}</span></span>
         <span class="inv-amt">${big(c.value)}</span>
