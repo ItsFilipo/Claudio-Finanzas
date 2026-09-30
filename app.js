@@ -261,9 +261,22 @@ function shown(c, spent) {
   return b ? { val: Math.abs(b - spent), r: Math.round(Math.max(0, Math.min(1, (b - spent) / b)) * 100) } : { val: spent, r: 0 };
 }
 
+// Experimento: fecha simulada. Hace que toda la app crea que "hoy" es otro día.
+const RealDate = Date;
+function setClock(day) {
+  if (!day) { window.Date = RealDate; return; }
+  const shift = new RealDate(day + 'T12:00') - RealDate.now();
+  window.Date = class extends RealDate {
+    constructor(...a) { super(...(a.length ? a : [RealDate.now() + shift])); }
+    static now() { return RealDate.now() + shift; }
+  };
+}
+
 function boot() {
+  const saved = store.load();
+  setClock(saved?.settings?.fakeToday);
   hostTheme = document.documentElement.getAttribute('data-theme');
-  S = store.load() || fresh(new Date(), true);
+  S = saved || fresh(new Date(), true);
   S.movements = S.movements.filter(m => m.date >= START); // borra lo anterior a octubre 2026
   S.debts ||= [];
   S.investments ||= [];
@@ -285,6 +298,7 @@ function boot() {
     if (e.target.id === 'note' && !ui.add?.id) suggestFrom(e.target.value);
   });
   document.addEventListener('change', e => {
+    if (e.target.id === 'fake-day') { S.settings.fakeToday = e.target.value || null; setClock(S.settings.fakeToday); postRecurring(S, new Date()); ui.month = thisMonth(); commit(); toast(e.target.value ? `Listo: la app cree que hoy es ${+e.target.value.slice(8)} de ${monthName(e.target.value.slice(0, 7)).toLowerCase()}` : 'Volviste a la fecha real'); }
     if (e.target.name === 'horizon') { ui.invYears = +e.target.value; openInvDetail(e.target.dataset.id); }
     if (e.target.name === 'sort') { ui.sort = e.target.value; $('#mov-results').innerHTML = movResults(); }
     if (e.target.name === 'theme') { S.settings.theme = e.target.value; applyTheme(); commit(); }
@@ -330,6 +344,7 @@ const topBar = (title, extra = '') => `<header class="top"><h1>${title}</h1><div
 const banners = () =>
   (S.movements.some(m => m.ex) || S.goals.some(g => g.ex)
     ? `<div class="banner"><span>Estos son datos de ejemplo para que veas cómo funciona.</span><button class="btn small" data-act="clear-ex">Empezar de cero</button></div>` : '') +
+  (S.settings.fakeToday ? `<div class="banner"><span>Fecha simulada: la app cree que hoy es <b>${+S.settings.fakeToday.slice(8)} de ${monthName(S.settings.fakeToday.slice(0, 7)).toLowerCase()}</b>.</span><button class="btn small" data-act="real-date">Volver a hoy</button></div>` : '') +
   (ui.saveFail ? `<div class="banner bad">Este navegador no está guardando tus datos. Lo que anotes se perderá al cerrar.</div>` : '');
 
 const movRow = m => {
@@ -491,6 +506,11 @@ const VIEWS = {
         <span><span class="t">Gastos frecuentes</span><span class="s">${S.quick.length ? `${S.quick.length} guardados` : 'Anótalos con un toque'}</span></span>${ico('right', 18)}</button>
         <button class="row" data-act="recs"><span class="dot" style="--c:#2E8C86">${ico('repeat', 16)}</span>
         <span><span class="t">Recurrentes</span><span class="s">${S.recurring.length ? `${S.recurring.length} cada mes` : 'Se anotan solos cada mes'}</span></span>${ico('right', 18)}</button></div>
+    </section>
+    <section class="set"><h2 class="sec">Experimento: fecha simulada</h2>
+      <p class="hint" style="margin-bottom:10px">Elige un día y la app se comporta como si fuera ese día: inversiones, recurrentes, avisos y resumen. Solo para probar.</p>
+      <div class="two"><input class="text" type="date" id="fake-day" value="${S.settings.fakeToday || ''}" min="${START}-01" aria-label="Fecha simulada">
+        <button class="btn" data-act="real-date" ${S.settings.fakeToday ? '' : 'disabled'}>Hoy real</button></div>
     </section>
     <section class="set"><h2 class="sec">Tus datos</h2>
       <p class="hint" style="margin-bottom:12px">Todo se guarda solo en este dispositivo. De vez en cuando copia un respaldo y pégalo en tus notas.</p>
@@ -1000,6 +1020,7 @@ function onClick(e) {
         <span><span class="t">${esc(r.name)}</span><span class="s">Cada día ${r.day} · ${r.kind === 'in' ? 'ingreso' : esc(c.name)} · ${esc(meth(r.method))}</span></span><span class="a ${r.kind === 'in' ? 'pos' : ''}">${r.kind === 'in' ? '+' : ''}${money(r.amount)}</span></button>`; }).join('')}</div>` : '') +
       `<p class="hint">Arriendo, Netflix o tu sueldo: los creas una vez y se anotan solos cada mes el día que elijas.</p>`); break;
     case 'panel': openPanel(el.dataset.p); break;
+    case 'real-date': S.settings.fakeToday = null; setClock(null); ui.month = thisMonth(); commit(); toast('Volviste a la fecha real'); break;
     case 'cats': openSheet(sheetTop('Tus sobres', '<button class="link" data-act="cat-edit">Nuevo</button>') + `<div class="list">${S.categories.map(c => `<button class="row" data-act="cat-edit" data-id="${c.id}">
       <span class="dot" style="--c:${c.color}">${ico(c.icon, 16)}</span>
       <span><span class="t">${esc(c.name)}</span><span class="s">${money(spentByCat(S, thisMonth())[c.id] || 0)} este mes</span></span>${ico('right', 18)}</button>`).join('')}</div>
