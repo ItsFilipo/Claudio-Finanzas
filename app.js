@@ -430,8 +430,8 @@ const VIEWS = {
       ? `<button class="row" data-act="inc-edit" data-id="${x.id}"><span class="dot" style="--c:#2E8C86">${ico('down2', 16)}</span><span><span class="t">${esc(x.note || 'Ingreso')}</span><span class="s">${dayLabel(x.date)} · a ${esc(meth(x.method))}${x.rec ? ' · recurrente' : ''}</span></span><span class="a pos">+${money(x.amount)}</span></button>`
       : `<button class="row" data-act="tr-edit" data-id="${x.id}"><span class="dot" style="--c:#4F6275">${ico('arrows', 16)}</span><span><span class="t">${esc(x.note || 'Transferencia')}</span><span class="s">${dayLabel(x.date)} · ${esc(meth(x.from))}${x.to ? ' → ' + esc(meth(x.to)) : ''}</span></span><span class="a">${money(x.amount)}</span></button>`;
     return topBar('Dinero') + banners() + `
-    <section class="summary"><p class="big ${w.liquid - w.owe - w.cards < 0 ? 'neg' : ''}">${big(w.liquid - w.owe - w.cards)}</p>
-      <p class="sub">tu dinero líquido${w.owe || w.cards ? `, ya restando lo que debes (tienes ${money(w.liquid)} en cuentas)` : ''} · tu dinero total es <b>${money(w.total)}</b></p></section>
+    <section class="summary"><p class="big ${w.liquid < 0 ? 'neg' : ''}">${big(w.liquid)}</p>
+      <p class="sub">tu dinero líquido · tu dinero total es <b>${money(w.total)}</b></p></section>
     ${w.inv || w.owed || w.owe || w.cards ? `<div class="list worth-list">
       ${[['trend', '#2E8C86', 'Inversiones', w.inv, 1], ['user', '#2E8C86', 'Te deben', w.owed, 1], ['user', '#C2544A', 'Debes', w.owe, -1], ['card', '#7A5AA6', 'Tarjetas de crédito', w.cards, -1]]
         .filter(x => x[3]).map(([i, c, t, v, sg]) => `<div class="row"><span class="dot" style="--c:${c}">${ico(i, 16)}</span><span><span class="t">${t}</span></span><span class="a ${sg < 0 ? 'neg' : 'pos'}">${sg < 0 ? '−' : '+'}${money(v)}</span></div>`).join('')}
