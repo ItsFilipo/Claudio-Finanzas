@@ -84,11 +84,13 @@ const toTable = state => ['Fecha\tSobre\tNota\tMétodo\tValor', ...[...state.mov
   [m.date, state.categories.find(c => c.id === m.cat)?.name || 'Sin sobre', m.note || '', state.methods.find(x => x.id === m.method)?.name || '', m.amount]
     .map(v => String(v).replace(/[\t\n]/g, ' ')).join('\t'))].join('\n');
 
-function spentByCat(state, month) {
+// Gasto por sobre entre dos meses (incluidos), por ejemplo '2026-10' a '2026-12'.
+function spentIn(state, from, to) {
   const t = {};
-  for (const m of state.movements) if (m.date.startsWith(month)) t[m.cat] = (t[m.cat] || 0) + own(m);
+  for (const m of state.movements) { const mo = m.date.slice(0, 7); if (mo >= from && mo <= to) t[m.cat] = (t[m.cat] || 0) + own(m); }
   return t;
 }
+const spentByCat = (state, month) => spentIn(state, month, month);
 
 // Resumen de un mes: comparación con el anterior a la misma fecha, sobre y día más caros, promedio, ingresos.
 function insights(state, month, now) {
@@ -299,6 +301,7 @@ function boot() {
   });
   document.addEventListener('change', e => {
     if (e.target.id === 'fake-day') { S.settings.fakeToday = e.target.value || null; setClock(S.settings.fakeToday); postRecurring(S, new Date()); ui.month = thisMonth(); commit(); toast(e.target.value ? `Listo: la app cree que hoy es ${+e.target.value.slice(8)} de ${monthName(e.target.value.slice(0, 7)).toLowerCase()}` : 'Volviste a la fecha real'); }
+    if (e.target.name === 'period') { ui.period = e.target.value; render(); }
     if (e.target.name === 'horizon') { ui.invYears = +e.target.value; openInvDetail(e.target.dataset.id); }
     if (e.target.name === 'sort') { ui.sort = e.target.value; $('#mov-results').innerHTML = movResults(); }
     if (e.target.name === 'theme') { S.settings.theme = e.target.value; applyTheme(); commit(); }
@@ -330,15 +333,31 @@ function render() {
   if (ui.flash) runFlash();
 }
 
+// Periodo que se ve en Sobres y Gastos: mes, trimestre, año o todo.
+function period() {
+  const p = ui.period || 'mes', [y, m] = ui.month.split('-').map(Number), now = thisMonth();
+  if (p === 'tri') { const q = Math.floor((m - 1) / 3) * 3; const from = `${y}-${pad(q + 1)}`, to = `${y}-${pad(q + 3)}`;
+    return { p, from, to, label: `${cap(new Date(y, q, 1).toLocaleDateString('es-CO', { month: 'short' }).replace('.', ''))} – ${new Date(y, q + 2, 1).toLocaleDateString('es-CO', { month: 'short' }).replace('.', '')} ${y}`, step: 3, words: 'este trimestre' }; }
+  if (p === 'anio') return { p, from: `${y}-01`, to: `${y}-12`, label: String(y), step: 12, words: `en ${y}` };
+  if (p === 'todo') return { p, from: '0000', to: '9999', label: 'Desde el inicio', step: 0, words: 'desde que empezaste' };
+  return { p, from: ui.month, to: ui.month, label: monthName(ui.month), step: 1, words: 'en ' + monthName(ui.month).toLowerCase() };
+}
+const inPeriod = (date, pr) => { const mo = date.slice(0, 7); return mo >= pr.from && mo <= pr.to; };
+
 const gear = () => `<button class="icon-btn" data-act="tab" data-tab="ajustes" aria-label="Ajustes">${ico('sliders')}</button>`;
-const monthBar = () => `<header class="top">
-  <h1><button class="title-btn" data-act="year" data-y="${ui.month.slice(0, 4)}" aria-label="Ver calendario del año">${monthName(ui.month)} ${ico('down', 18)}</button></h1>
+const monthBar = () => {
+  const pr = period();
+  return `<header class="top">
+  <h1>${pr.p === 'mes' ? `<button class="title-btn" data-act="year" data-y="${ui.month.slice(0, 4)}" aria-label="Ver calendario del año">${pr.label} ${ico('down', 18)}</button>` : pr.label}</h1>
   <div class="top-actions">
-    <button class="icon-btn" data-act="month" data-k="-1" aria-label="Mes anterior" ${ui.month <= START ? 'disabled' : ''}>${ico('left')}</button>
-    <button class="icon-btn" data-act="month" data-k="1" aria-label="Mes siguiente" ${ui.month >= thisMonth() ? 'disabled' : ''}>${ico('right')}</button>
+    ${pr.step ? `<button class="icon-btn" data-act="month" data-k="-${pr.step}" aria-label="Periodo anterior" ${pr.from <= START ? 'disabled' : ''}>${ico('left')}</button>
+    <button class="icon-btn" data-act="month" data-k="${pr.step}" aria-label="Periodo siguiente" ${pr.to >= thisMonth() ? 'disabled' : ''}>${ico('right')}</button>` : ''}
     ${gear()}
   </div>
-</header>`;
+</header>
+<div class="seg four period" role="radiogroup" aria-label="Periodo">${[['mes', 'Mes'], ['tri', 'Trimestre'], ['anio', 'Año'], ['todo', 'Todo']]
+  .map(([v, l]) => `<label><input type="radio" name="period" value="${v}" ${pr.p === v ? 'checked' : ''}><span>${l}</span></label>`).join('')}</div>`;
+};
 const topBar = (title, extra = '') => `<header class="top"><h1>${title}</h1><div class="top-actions">${extra}${gear()}</div></header>`;
 
 const banners = () =>
@@ -391,37 +410,37 @@ function movResults() {
     return `<p class="sub total">${found.length} ${found.length === 1 ? 'resultado' : 'resultados'} · ${money(sum(found, own))} en total</p>
       <div class="list" style="margin-top:12px">${found.map(m => movRow(m).replace('<span class="s">', `<span class="s">${dayLabel(m.date)}${m.date.slice(0, 7) !== thisMonth() ? ' de ' + monthName(m.date.slice(0, 7)).toLowerCase() : ''} · `)).join('')}</div>`;
   }
-  const list = S.movements.filter(m => m.date.startsWith(ui.month)).sort(byDate);
-  if (!list.length) return `<p class="empty">No hay gastos en ${monthName(ui.month).toLowerCase()}. Toca <b>Anotar gasto</b> para registrar el primero.</p>`;
+  const pr = period(), list = S.movements.filter(m => inPeriod(m.date, pr)).sort(byDate);
+  if (!list.length) return `<p class="empty">No hay gastos ${pr.words}. Toca <b>Anotar gasto</b> para registrar el primero.</p>`;
   const sort = ui.sort || 'new';
   const head = `<p class="sub total">${list.length} ${list.length === 1 ? 'gasto' : 'gastos'} · ${money(sum(list, own))}</p>
     <div class="seg" role="radiogroup" aria-label="Ordenar" style="margin-top:12px">${[['new', 'Recientes'], ['high', 'Más caros'], ['low', 'Más baratos']]
       .map(([v, l]) => `<label><input type="radio" name="sort" value="${v}" ${sort === v ? 'checked' : ''}><span>${l}</span></label>`).join('')}</div>`;
   if (sort !== 'new') {
     const sorted = [...list].sort((a, b) => (sort === 'high' ? b.amount - a.amount : a.amount - b.amount) || byDate(a, b));
-    return head + `<div class="list" style="margin-top:16px">${sorted.map(m => movRow(m).replace('<span class="s">', `<span class="s">${dayLabel(m.date)} · `)).join('')}</div>`;
+    return head + `<div class="list" style="margin-top:16px">${sorted.map(m => movRow(m).replace('<span class="s">', `<span class="s">${dayLabel(m.date)}${pr.p !== 'mes' ? ' de ' + monthName(m.date.slice(0, 7)).toLowerCase() : ''} · `)).join('')}</div>`;
   }
   const days = new Map();
   for (const m of list) days.set(m.date, [...(days.get(m.date) || []), m]);
-  return head + [...days].map(([d, ms]) => `<h2 class="day"><span>${dayLabel(d)}</span><span>${money(sum(ms, own))}</span></h2><div class="list">${ms.map(movRow).join('')}</div>`).join('');
+  return head + [...days].map(([d, ms]) => `<h2 class="day"><span>${dayLabel(d)}${pr.p !== 'mes' && !['Hoy', 'Ayer'].includes(dayLabel(d)) ? ' de ' + monthName(d.slice(0, 7)).toLowerCase() : ''}</span><span>${money(sum(ms, own))}</span></h2><div class="list">${ms.map(movRow).join('')}</div>`).join('');
 }
 
 const VIEWS = {
   sobres() {
-    const spent = spentByCat(S, ui.month);
+    const pr = period(), spent = spentIn(S, pr.from, pr.to);
     const total = sum(Object.values(spent), x => x);
     const withBudget = S.categories.filter(c => c.budget > 0);
     const budget = sum(withBudget, c => c.budget);
     const left = budget - sum(withBudget, c => spent[c.id] || 0);
-    const recent = S.movements.filter(m => m.date.startsWith(ui.month)).sort(byDate).slice(0, 4);
+    const recent = S.movements.filter(m => inPeriod(m.date, pr)).sort(byDate).slice(0, 4);
     return monthBar() + banners() + `
     <section class="summary">${budget
       ? `<p class="big ${left < 0 ? 'neg' : ''}">${big(left)}</p><p class="sub">${left < 0 ? 'te pasaste del presupuesto' : 'te quedan de ' + money(budget)} · gastaste ${money(total)}</p>`
-      : `<p class="big">${big(total)}</p><p class="sub">gastado en ${monthName(ui.month).toLowerCase()}</p>`}
+      : `<p class="big">${big(total)}</p><p class="sub">gastado ${pr.words}</p>`}
     </section>
     ${cardAlerts(S, new Date()).map(a => `<button class="banner alert" data-act="tab" data-tab="dinero">${ico('card', 18)}<span>Paga tu <b>${esc(a.m.name)}</b> ${a.days === 0 ? 'hoy' : a.days === 1 ? 'mañana' : `en ${a.days} días`}: ${money(a.debt)}</span></button>`).join('')}
     <div class="envelopes">${S.categories.map(c => envelope(c, spent[c.id] || 0)).join('')}</div>
-    ${summaryList()}
+    ${pr.p === 'mes' ? summaryList() : ''}
     ${recent.length ? `<h2 class="sec">Últimos gastos</h2><div class="list">${recent.map(movRow).join('')}</div>` : ''}`;
   },
 
@@ -652,11 +671,11 @@ function runFlash() {
 
 function openCatDetail(id) {
   const c = cat(id);
-  const ms = S.movements.filter(m => m.cat === id && m.date.startsWith(ui.month)).sort(byDate);
+  const pr = period(), ms = S.movements.filter(m => m.cat === id && inPeriod(m.date, pr)).sort(byDate);
   const s = sum(ms, m => m.amount), b = c.budget;
   openSheet(sheetTop(esc(c.name), `<button class="link" data-act="cat-edit" data-id="${id}">Editar</button>`) + `
     <div><p class="big sm ${b && s > b ? 'neg' : ''}">${big(b ? b - s : s)}</p>
-    <p class="sub">${b ? (s > b ? 'te pasaste' : 'quedan de ' + money(b)) + ' · gastaste ' + money(s) : 'gastado'} en ${monthName(ui.month).toLowerCase()}</p></div>
+    <p class="sub">${b ? (s > b ? 'te pasaste' : 'quedan de ' + money(b)) + ' · gastaste ' + money(s) : 'gastado'} ${pr.words}</p></div>
     <button class="btn primary wide" data-act="add-in" data-id="${id}">${ico('plus', 18)} Anotar gasto en ${esc(c.name)}</button>
     ${ms.length ? `<div class="list">${ms.map(movRow).join('')}</div>` : `<p class="empty" style="padding-block:8px">Nada anotado en este sobre este mes.</p>`}`);
 }
@@ -976,7 +995,7 @@ function onClick(e) {
   const id = el.dataset.id;
   switch (el.dataset.act) {
     case 'tab': if (el.dataset.tab === 'ajustes' && ui.view !== 'ajustes') ui.back = ui.view; ui.view = el.dataset.tab; scrollTo(0, 0); render(); break;
-    case 'month': ui.month = shiftMonth(ui.month, +el.dataset.k); render(); break;
+    case 'month': { const n = shiftMonth(ui.month, +el.dataset.k); ui.month = n < START ? START : n > thisMonth() ? thisMonth() : n; render(); break; }
     case 'year': openYear(+el.dataset.y); break;
     case 'tag': ui.q = ui.q === el.dataset.tag ? '' : el.dataset.tag; render(); break;
     case 'pick-month': ui.month = el.dataset.m; closeSheet(); render(); break;
@@ -1122,7 +1141,7 @@ function onSubmit(e) {
   commit();
 }
 
-if (typeof module !== 'undefined') module.exports = { track, trackAll, money, digits, ymd, spentByCat, postRecurring, fresh, balance, worth, toTable, invest, cardDebt, cardAlerts, insights, search, tagsOf, goalPlan, own };
+if (typeof module !== 'undefined') module.exports = { spentIn, track, trackAll, money, digits, ymd, spentByCat, postRecurring, fresh, balance, worth, toTable, invest, cardDebt, cardAlerts, insights, search, tagsOf, goalPlan, own };
 else {
   boot();
   // App instalada: funciona sin internet y pide al navegador no borrar los datos.

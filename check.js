@@ -116,3 +116,11 @@ const mm = { amount: 5000000, rate: 9, freq: 'm', compound: false, start: '2026-
 assert.equal(invest(mm, new Date(2027, 1, 28)).earned, invest(mm, new Date(2027, 1, 1)).earned); // feb 1 y feb 28: 4 pagos
 assert.ok(invest(mm, new Date(2027, 2, 1)).earned > invest(mm, new Date(2027, 1, 28)).earned); // 1 de marzo: 5 pagos
 console.log('ok pagos mensuales');
+
+// Gasto por sobre en varios meses (trimestre, año)
+const { spentIn } = require('./app.js');
+const q = fresh(new Date(2026, 11, 5), false);
+q.movements.push({ amount: 100, cat: 'comida', date: '2026-10-03' }, { amount: 200, cat: 'comida', date: '2026-11-03' }, { amount: 50, cat: 'casa', date: '2026-12-01' }, { amount: 999, cat: 'comida', date: '2027-01-01' });
+assert.deepEqual(spentIn(q, '2026-10', '2026-12'), { comida: 300, casa: 50 });
+assert.deepEqual(spentIn(q, '2026-01', '2026-12').comida, 300);
+console.log('ok periodos');
