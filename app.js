@@ -502,23 +502,13 @@ const VIEWS = {
       <div class="seg" role="radiogroup" aria-label="Tema">${[['system', 'Automático'], ['light', 'Claro'], ['dark', 'Oscuro']]
         .map(([v, l]) => `<label><input type="radio" name="theme" value="${v}" ${th === v ? 'checked' : ''}><span>${l}</span></label>`).join('')}</div>
     </section>
-    <section class="set"><div class="sec-head"><h2 class="sec">Sobres</h2><button class="link" data-act="cat-edit">Nuevo sobre</button></div>
-      <div class="list">${S.categories.map(c => `<button class="row" data-act="cat-edit" data-id="${c.id}">
-        <span class="dot" style="--c:${c.color}">${ico(c.icon, 16)}</span>
-        <span><span class="t">${esc(c.name)}</span><span class="s">${money(spentByCat(S, thisMonth())[c.id] || 0)} este mes</span></span>${ico('right', 18)}</button>`).join('')}</div>
-    </section>
-    <section class="set"><div class="sec-head"><h2 class="sec">Gastos frecuentes</h2><button class="link" data-act="quick-edit">Nuevo</button></div>
-      ${S.quick.length ? `<div class="list">${S.quick.map(q => { const c = cat(q.cat);
-        return `<button class="row" data-act="quick-edit" data-id="${q.id}"><span class="dot" style="--c:${c.color}">${ico('bolt', 16)}</span>
-          <span><span class="t">${esc(q.note)}</span><span class="s">${esc(c.name)} · ${esc(meth(q.method))}</span></span><span class="a">${money(q.amount)}</span></button>`; }).join('')}</div>`
-        : `<p class="hint">El tinto, el bus, el almuerzo… Guárdalos y se anotan con un solo toque.</p>`}
-    </section>
-    <section class="set"><div class="sec-head"><h2 class="sec">Recurrentes</h2><button class="link" data-act="rec-edit">Nuevo</button></div>
-      ${S.recurring.length ? `<div class="list">${S.recurring.map(r => {
-        const c = cat(r.cat);
-        return `<button class="row" data-act="rec-edit" data-id="${r.id}"><span class="dot" style="--c:${c.color}">${ico('repeat', 16)}</span>
-          <span><span class="t">${esc(r.name)}</span><span class="s">Cada día ${r.day} · ${r.kind === 'in' ? 'ingreso' : esc(c.name)} · ${esc(meth(r.method))}</span></span><span class="a ${r.kind === 'in' ? 'pos' : ''}">${r.kind === 'in' ? '+' : ''}${money(r.amount)}</span></button>`;
-      }).join('')}</div>` : `<p class="hint">Arriendo, Netflix o tu sueldo: agrégalos y se anotan solos cada mes el día que elijas.</p>`}
+    <section class="set"><h2 class="sec">Organización</h2>
+      <div class="list"><button class="row" data-act="cats"><span class="dot" style="--c:#C8912E">${ico('mail', 16)}</span>
+        <span><span class="t">Tus sobres</span><span class="s">${S.categories.length} sobres · crear, editar o eliminar</span></span>${ico('right', 18)}</button>
+        <button class="row" data-act="quicks"><span class="dot" style="--c:#C8912E">${ico('bolt', 16)}</span>
+        <span><span class="t">Gastos frecuentes</span><span class="s">${S.quick.length ? `${S.quick.length} guardados` : 'Anótalos con un toque'}</span></span>${ico('right', 18)}</button>
+        <button class="row" data-act="recs"><span class="dot" style="--c:#2E8C86">${ico('repeat', 16)}</span>
+        <span><span class="t">Recurrentes</span><span class="s">${S.recurring.length ? `${S.recurring.length} cada mes` : 'Se anotan solos cada mes'}</span></span>${ico('right', 18)}</button></div>
     </section>
     <section class="set"><h2 class="sec">Tus datos</h2>
       <p class="hint" style="margin-bottom:12px">Todo se guarda solo en este dispositivo. De vez en cuando copia un respaldo y pégalo en tus notas.</p>
@@ -980,6 +970,18 @@ function onClick(e) {
     case 'del-mov': S.movements = S.movements.filter(m => m.id !== ui.add.id); closeSheet(); commit(); toast('Gasto eliminado'); break;
     case 'clear-ex': S.movements = S.movements.filter(m => !m.ex); S.goals = S.goals.filter(g => !g.ex); commit(); toast('Listo. Ahora todo es tuyo.'); break;
     case 'cat-edit': openCatEdit(id); break;
+    case 'quicks': openSheet(sheetTop('Gastos frecuentes', '<button class="link" data-act="quick-edit">Nuevo</button>') + (S.quick.length ? `<div class="list">${S.quick.map(q => { const c = cat(q.cat);
+      return `<button class="row" data-act="quick-edit" data-id="${q.id}"><span class="dot" style="--c:${c.color}">${ico('bolt', 16)}</span>
+        <span><span class="t">${esc(q.note)}</span><span class="s">${esc(c.name)} · ${esc(meth(q.method))}</span></span><span class="a">${money(q.amount)}</span></button>`; }).join('')}</div>` : '') +
+      `<p class="hint">Los creas tú, aquí o desde un gasto con "Guardar como gasto frecuente". Aparecen arriba al tocar Anotar gasto: un toque y queda anotado.</p>`); break;
+    case 'recs': openSheet(sheetTop('Recurrentes', '<button class="link" data-act="rec-edit">Nuevo</button>') + (S.recurring.length ? `<div class="list">${S.recurring.map(r => { const c = cat(r.cat);
+      return `<button class="row" data-act="rec-edit" data-id="${r.id}"><span class="dot" style="--c:${c.color}">${ico('repeat', 16)}</span>
+        <span><span class="t">${esc(r.name)}</span><span class="s">Cada día ${r.day} · ${r.kind === 'in' ? 'ingreso' : esc(c.name)} · ${esc(meth(r.method))}</span></span><span class="a ${r.kind === 'in' ? 'pos' : ''}">${r.kind === 'in' ? '+' : ''}${money(r.amount)}</span></button>`; }).join('')}</div>` : '') +
+      `<p class="hint">Arriendo, Netflix o tu sueldo: los creas una vez y se anotan solos cada mes el día que elijas.</p>`); break;
+    case 'cats': openSheet(sheetTop('Tus sobres', '<button class="link" data-act="cat-edit">Nuevo</button>') + `<div class="list">${S.categories.map(c => `<button class="row" data-act="cat-edit" data-id="${c.id}">
+      <span class="dot" style="--c:${c.color}">${ico(c.icon, 16)}</span>
+      <span><span class="t">${esc(c.name)}</span><span class="s">${money(spentByCat(S, thisMonth())[c.id] || 0)} este mes</span></span>${ico('right', 18)}</button>`).join('')}</div>
+      <p class="hint">Toca un sobre para cambiarle el nombre, el ícono o el color, o para eliminarlo.</p>`); break;
     case 'cat-del': S.categories = S.categories.filter(c => c.id !== id); closeSheet(); commit(); toast('Sobre eliminado'); break;
     case 'rec-edit': openRec(id); break;
     case 'rec-del': S.recurring = S.recurring.filter(r => r.id !== id); closeSheet(); commit(); break;
