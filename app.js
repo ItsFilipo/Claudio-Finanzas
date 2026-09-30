@@ -827,7 +827,7 @@ function openInvDetail(id) {
     <div class="seg four" role="radiogroup" aria-label="Ver crecimiento a">${[[0, x.months ? 'Su plazo' : '1 año'], [5, '5 años'], [10, '10 años'], [20, '20 años']]
       .map(([v, l]) => `<label><input type="radio" name="horizon" value="${v}" data-id="${id}" ${yrs === v ? 'checked' : ''}><span>${l}</span></label>`).join('')}</div>
     <figure class="chart" id="inv-chart" aria-label="Crecimiento de ${esc(x.name)}">${growthChart(pts, x.amount, now, compound)}<div class="tip" hidden></div></figure>
-    ${compound && pts.length > 1 ? `<p class="hint">Con interés compuesto ganas <b>${money(pts.at(-1).v - x.amount)}</b>${yrs ? ` en ${yrs} años` : ''}. Sin compuesto serían ${money(pts.at(-1).s - x.amount)}: el compuesto te suma <b>${money(pts.at(-1).v - pts.at(-1).s)}</b>.</p>` : ''}
+    ${pts.length > 1 ? `<p class="hint">${yrs ? `Si la renuevas a la misma tasa, en ${yrs} años ganarías` : 'Al final ganas'} <b>${money(pts.at(-1).v - x.amount)}</b>.</p>` : ''}
     <div class="tiles">
       ${tile('Llevas ganado', money(c.earned), 'hasta hoy')}
       ${tile('Vas a ganar', c.gain == null ? '—' : money(c.gain), c.end ? 'al ' + fmtD(c.end) : 'en total')}
@@ -845,7 +845,6 @@ function growthChart(pts, base, now, compound) {
   const t0 = +pts[0].d, t1 = +pts.at(-1).d, hi = Math.max(pts.at(-1).v, base + 1), lo = base - (hi - base) * .3;
   const X = t => L + (t - t0) / (t1 - t0) * (W - L - R), Y = v => T + (1 - (v - lo) / (hi - lo)) * (H - T - B);
   const line = pts.map((p, k) => `${k ? 'L' : 'M'}${X(+p.d).toFixed(1)},${Y(p.v).toFixed(1)}`).join('');
-  const simple = pts.map((p, k) => `${k ? 'L' : 'M'}${X(+p.d).toFixed(1)},${Y(p.s).toFixed(1)}`).join('');
   const inRange = +now >= t0 && +now <= t1;
   const today = inRange ? pts.reduce((a, p) => (+p.d <= +now ? p : a), pts[0]) : null;
   const short = d => d.toLocaleDateString('es-CO', { month: 'short', year: '2-digit' }).replace('.', '');
@@ -854,7 +853,6 @@ function growthChart(pts, base, now, compound) {
     <line x1="${L}" x2="${W - R}" y1="${Y(base)}" y2="${Y(base)}" class="base"/>
     <text x="${W - R}" y="${Y(base) + 15}" class="lbl" text-anchor="end">Invertiste ${money(base)}</text>
     <path d="${line}L${X(t1)},${Y(lo)}L${X(t0)},${Y(lo)}Z" fill="url(#gfill)"/>
-    ${compound ? `<path d="${simple}" class="simple"/><text x="${W - R}" y="${Y(pts.at(-1).s) + 16}" class="lbl" text-anchor="end">Sin compuesto</text>` : ''}
     <path d="${line}" class="curve"/>
     <text x="${W - R}" y="${Y(pts.at(-1).v) - 8}" class="lbl end" text-anchor="end">${money(pts.at(-1).v)}</text>
     ${today ? `<line x1="${X(+now)}" x2="${X(+now)}" y1="${T - 6}" y2="${H - B}" class="now"/><text x="${X(+now)}" y="${T - 10}" class="lbl" text-anchor="middle">Hoy</text>` : ''}
@@ -877,7 +875,7 @@ function wireChart(pts, compound) {
     dot.setAttribute('cx', x); dot.setAttribute('cy', y);
     cross.setAttribute('visibility', 'visible'); dot.setAttribute('visibility', 'visible');
     tip.hidden = false;
-    tip.innerHTML = `<b>${money(pts[k].v)}</b>${compound ? `<span>sin compuesto ${money(pts[k].s)}</span>` : ''}<span>${pts[k].d.getDate()} ${pts[k].d.toLocaleDateString('es-CO', { month: 'short', year: 'numeric' }).replace('.', '')}</span>`;
+    tip.innerHTML = `<b>${money(pts[k].v)}</b><span>${pts[k].d.getDate()} ${pts[k].d.toLocaleDateString('es-CO', { month: 'short', year: 'numeric' }).replace('.', '')}</span>`;
     tip.style.left = `${Math.min(Math.max(x / 340 * 100, 18), 82)}%`;
   };
   const hide = () => { tip.hidden = true; cross.setAttribute('visibility', 'hidden'); dot.setAttribute('visibility', 'hidden'); };
