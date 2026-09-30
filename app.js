@@ -28,6 +28,17 @@ const balance = (state, m) => (m.credit || m.base == null ? null : m.base + flow
 // Lo que debes en una tarjeta de crédito: lo que debías al fijarla más lo que compraste menos lo que pagaste.
 const cardDebt = (state, m) => (m.base || 0) - flow(state, m);
 
+// Si a una cuenta sin saldo le entra o sale plata (ingreso, transferencia, abono), empieza a llevarlo desde $0 justo antes.
+function track(state, id, t) {
+  const m = state.methods.find(x => x.id === id);
+  if (m && !m.credit && m.base == null) { m.base = 0; m.baseT = t - 1; }
+}
+// Arregla datos viejos: cuentas sin saldo que ya tenían ingresos o transferencias.
+function trackAll(state) {
+  for (const x of [...(state.incomes || []), ...(state.transfers || [])].sort((a, b) => (a.t || 0) - (b.t || 0)))
+    for (const id of [x.method, x.to, x.from]) if (id) track(state, id, x.t || 1);
+}
+
 // Tarjetas cuyo día de pago llega en los próximos 5 días y tienen deuda.
 function cardAlerts(state, now) {
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -114,7 +125,7 @@ function postRecurring(state, now) {
     const day = Math.min(r.day, last);
     if (r.last === month || now.getDate() < day) continue;
     const x = { id: uid(), t: Date.now(), amount: r.amount, method: r.method, note: r.name, date: `${month}-${pad(day)}`, rec: r.id };
-    if (r.kind === 'in') (state.incomes ||= []).push(x); else state.movements.push({ ...x, cat: r.cat });
+    if (r.kind === 'in') { track(state, r.method, x.t); (state.incomes ||= []).push(x); } else state.movements.push({ ...x, cat: r.cat });
     r.last = month;
     n++;
   }
@@ -251,6 +262,7 @@ function boot() {
   S.debts ||= [];
   S.investments ||= [];
   for (const k of ['incomes', 'transfers', 'quick']) S[k] ||= [];
+  trackAll(S);
   S.categories.forEach(c => { c.budget = 0; }); // por ahora sin presupuestos: solo se registra lo gastado
   postRecurring(S, new Date());
   ui = { view: 'sobres', month: thisMonth() };
@@ -785,6 +797,7 @@ function openDebt(id, dir) {
 function payDebt(id, amount, method) {
   const d = S.debts.find(x => x.id === id), paid = Math.min(amount, d.amount);
   if (method) {
+    track(S, method, Date.now());
     const x = { id: uid(), t: Date.now(), amount: paid, date: todayStr(), debt: true };
     if (d.dir === 'in') S.incomes.push({ ...x, method, note: `Pago de ${d.who}` });
     else S.transfers.push({ ...x, from: method, to: null, note: `Pago a ${d.who}` });
@@ -870,8 +883,9 @@ function onClick(e) {
     }
     case 'half': $('#split-amt').value = fmtNum(Math.round(digits($('#amt').value) / 2)); break;
     case 'make-quick': {
-      const m = S.movements.find(x => x.id === ui.add.id);
-      S.quick.push({ id: uid(), note: m.note || cat(m.cat).name, amount: m.amount, cat: m.cat, method: m.method });
+      // Usa lo que está escrito en la hoja ahora mismo, aunque todavía no hayas guardado.
+      const catId = ui.add.cat, note = $('#note').value.trim();
+      S.quick.push({ id: uid(), note: note || cat(catId).name, amount: digits($('#amt').value), cat: catId, method: document.querySelector('input[name=method]:checked')?.value });
       commit();
       toast('Listo: ahora aparece arriba al anotar un gasto');
       break;
@@ -926,9 +940,11 @@ function onSubmit(e) {
       upsert(S.methods, { name: d.name.trim(), ...v });
       break;
     }
-    case 'inc': upsert(S.incomes, { amount: digits(d.amount), note: d.note.trim(), method: d.method, date: d.date >= START ? d.date : todayStr(), ...(id ? {} : { t: Date.now() }) }); break;
+    case 'inc': if (!id) track(S, d.method, Date.now());
+      upsert(S.incomes, { amount: digits(d.amount), note: d.note.trim(), method: d.method, date: d.date >= START ? d.date : todayStr(), ...(id ? {} : { t: Date.now() }) }); break;
     case 'tr':
       if (d.from === d.to) { const h = $('#tr-hint'); h.textContent = 'Elige dos cuentas distintas.'; h.className = 'hint err'; return; }
+      if (!id) { track(S, d.from, Date.now()); track(S, d.to, Date.now()); }
       upsert(S.transfers, { amount: digits(d.amount), from: d.from, to: d.to, note: d.note.trim(), date: d.date >= START ? d.date : todayStr(), ...(id ? {} : { t: Date.now() }) });
       break;
     case 'quick': upsert(S.quick, { note: d.note.trim(), amount: digits(d.amount), cat: d.cat, method: d.method }); break;
@@ -975,7 +991,7 @@ function onSubmit(e) {
   commit();
 }
 
-if (typeof module !== 'undefined') module.exports = { money, digits, ymd, spentByCat, postRecurring, fresh, balance, worth, toTable, invest, cardDebt, cardAlerts, insights, search, tagsOf, goalPlan, own };
+if (typeof module !== 'undefined') module.exports = { track, trackAll, money, digits, ymd, spentByCat, postRecurring, fresh, balance, worth, toTable, invest, cardDebt, cardAlerts, insights, search, tagsOf, goalPlan, own };
 else {
   boot();
   // App instalada: funciona sin internet y pide al navegador no borrar los datos.

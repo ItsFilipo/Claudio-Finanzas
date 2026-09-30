@@ -99,3 +99,14 @@ assert.deepEqual(tagsOf('Hotel #Viaje y #playa'), ['#viaje', '#playa']);
 assert.equal(goalPlan({ target: 1200000, saved: 200000, due: '2027-03' }, new Date(2026, 10, 1)).perMonth, 200000); // nov–mar = 5 meses
 assert.equal(Math.round(invest({ ...cdt, ret: true }, new Date(2026, 9, 1)).perPay), Math.round(7207.3 * 0.96));
 console.log('ok nuevas funciones');
+
+// Ingreso a una cuenta sin saldo: empieza a contar desde $0 y sube el dinero líquido
+const { track, trackAll } = require('./app.js');
+const z = fresh(new Date(2026, 9, 5), false);
+z.movements.push({ amount: 5000, cat: 'comida', method: 'm1', date: '2026-10-02', t: 10 }); // gasto viejo, sin saldo
+z.incomes.push({ amount: 300000, method: 'm1', date: '2026-10-05', t: 20 });
+assert.equal(balance(z, z.methods[1]), null); // antes del arreglo: no se veía
+trackAll(z);
+assert.equal(balance(z, z.methods[1]), 300000);
+assert.equal(worth(z).liquid, 300000);
+console.log('ok ingreso sin saldo');
