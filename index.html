@@ -40,7 +40,7 @@
 
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
-html, body { background: var(--bg); color: var(--ink); }
+html, body { background: var(--bg); color: var(--ink); overscroll-behavior-y: none; }
 body {
   margin: 0; font: 15px/1.45 var(--ui); -webkit-font-smoothing: antialiased;
   padding-inline: 16px; padding-block: 0 calc(170px + env(safe-area-inset-bottom, 0px));
@@ -311,11 +311,12 @@ dialog[open]::backdrop { animation: fade .3s ease-out; }
   position: fixed; z-index: 4; display: grid; grid-template-columns: repeat(5, 1fr);
   left: max(0px, calc(50% - 330px)); right: max(0px, calc(50% - 330px)); bottom: 0;
   padding: 8px 6px calc(8px + env(safe-area-inset-bottom, 0px)); border-radius: 22px 22px 0 0;
-  background: color-mix(in oklab, var(--surface) 96%, transparent);
+  background: var(--surface);
   box-shadow: 0 -1px 0 color-mix(in oklab, var(--line) 70%, transparent), 0 -10px 30px -14px rgb(22 32 26 / .28);
-  backdrop-filter: saturate(1.4) blur(14px); -webkit-backdrop-filter: saturate(1.4) blur(14px);
 }
-.tabs button { display: grid; justify-items: center; gap: 3px; padding-block: 4px 2px; font-size: 11.5px; font-weight: 700; color: var(--ink-2); min-width: 0; }
+/* El fondo de la barra sigue hacia abajo: si el visor deja un hueco bajo la barra, no se ve el contenido pasando. */
+.tabs::after { content: ""; position: absolute; left: 0; right: 0; top: 100%; height: 120px; background: var(--surface); }
+.tabs button { position: relative; display: grid; justify-items: center; gap: 3px; padding-block: 4px 2px; font-size: 11.5px; font-weight: 700; color: var(--ink-2); min-width: 0; }
 .tabs button svg { width: 56px; height: 30px; padding: 4px 17px; border-radius: 99px; transition: background .25s var(--ease), color .2s, transform .45s var(--spring); }
 .tabs button[aria-current="page"] { color: var(--ink); }
 .tabs button[aria-current="page"] svg { background: color-mix(in oklab, var(--accent) 18%, transparent); color: var(--accent); }
@@ -392,6 +393,9 @@ dialog[open]::backdrop { animation: fade .3s ease-out; }
 .check { display: flex; gap: 12px; align-items: flex-start; font-size: 14.5px; font-weight: 600; cursor: pointer; }
 .check input { width: 22px; height: 22px; margin: 0; flex: none; }
 .seg.two-opt { grid-template-columns: repeat(2, 1fr); }
+.worth-list { margin-top: -6px; margin-bottom: 18px; }
+.worth-list .row { min-height: 54px; padding-block: 10px; }
+.worth-list .row.total .t, .worth-list .row.total .a { font-size: 16.5px; }
 .pay-box { padding: 16px; border-radius: 18px; background: var(--surface); box-shadow: var(--shadow); gap: 14px; }
 
 /* Inversiones */
