@@ -5,6 +5,7 @@
 const pad = n => String(n).padStart(2, '0');
 const ymd = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 const money = n => (n < 0 ? '−$' : '$') + Math.round(Math.abs(n)).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+const big = n => money(n).replace('$', '<span class="cur">$</span>');
 const fmtNum = n => (n ? money(n).slice(1) : '');
 const digits = s => Number(String(s).replace(/\D/g, '')) || 0;
 // La app empieza en octubre de 2026: no se muestran ni se registran meses anteriores.
@@ -225,7 +226,9 @@ function commit() {
 
 function render() {
   for (const v of Object.keys(VIEWS)) $('#v-' + v).hidden = v !== ui.view;
-  $('#v-' + ui.view).innerHTML = VIEWS[ui.view]();
+  const el = $('#v-' + ui.view);
+  el.innerHTML = VIEWS[ui.view]();
+  if (ui.shown !== ui.view) { el.classList.remove('enter'); void el.offsetWidth; el.classList.add('enter'); ui.shown = ui.view; }
   document.querySelectorAll('[data-tab]').forEach(b => b.dataset.tab === ui.view ? b.setAttribute('aria-current', 'page') : b.removeAttribute('aria-current'));
   if (ui.flash) runFlash();
 }
@@ -275,8 +278,8 @@ const VIEWS = {
     const recent = S.movements.filter(m => m.date.startsWith(ui.month)).sort(byDate).slice(0, 4);
     return monthBar() + banners() + `
     <section class="summary">${budget
-      ? `<p class="big ${left < 0 ? 'neg' : ''}">${money(left)}</p><p class="sub">${left < 0 ? 'te pasaste del presupuesto' : 'te quedan de ' + money(budget)} · gastaste ${money(total)}</p>`
-      : `<p class="big">${money(total)}</p><p class="sub">gastado en ${monthName(ui.month).toLowerCase()}</p>`}
+      ? `<p class="big ${left < 0 ? 'neg' : ''}">${big(left)}</p><p class="sub">${left < 0 ? 'te pasaste del presupuesto' : 'te quedan de ' + money(budget)} · gastaste ${money(total)}</p>`
+      : `<p class="big">${big(total)}</p><p class="sub">gastado en ${monthName(ui.month).toLowerCase()}</p>`}
     </section>
     <div class="envelopes">${S.categories.map(c => envelope(c, spent[c.id] || 0)).join('')}</div>
     ${recent.length ? `<h2 class="sec">Últimos gastos</h2><div class="list">${recent.map(movRow).join('')}</div>` : ''}`;
@@ -304,7 +307,7 @@ const VIEWS = {
       <span><span class="t">${esc(d.who)}</span><span class="s">${esc(d.note || (d.dir === 'in' ? 'Te debe' : 'Le debes'))}</span></span><span class="a">${money(d.amount)}</span></button>`;
     const debts = dir => { const xs = S.debts.filter(d => d.dir === dir); return xs.length ? `<div class="list">${xs.map(debtRow).join('')}</div>` : `<p class="hint">${dir === 'in' ? 'Nadie te debe plata.' : 'No le debes plata a nadie.'}</p>`; };
     return topBar('Dinero') + banners() + `
-    <section class="summary"><p class="big ${w.total < 0 ? 'neg' : ''}">${money(w.total)}</p>
+    <section class="summary"><p class="big ${w.total < 0 ? 'neg' : ''}">${big(w.total)}</p>
       <p class="sub">tu dinero total: líquido ${money(w.liquid)}${w.inv ? ' + inversiones ' + money(w.inv) : ''}${w.owed ? ' + te deben ' + money(w.owed) : ''}${w.owe ? ' − debes ' + money(w.owe) : ''}</p></section>
     <div class="sec-head"><h2 class="sec">Dinero líquido · ${money(w.liquid)}</h2><button class="link" data-act="meth-edit">Nueva cuenta</button></div>
     <div class="list">${S.methods.map(m => { const b = balance(S, m); return `<button class="row" data-act="meth-edit" data-id="${m.id}"><span class="dot" style="--c:#4F6275">${ico('card', 16)}</span>
@@ -325,14 +328,14 @@ const VIEWS = {
       const pay = atEnd ? ['Al vencimiento te pagan', c.perPay] : [`${f[2]} ${x.compound ? 'se suman' : 'te pagan'}`, c.perPay];
       return `<button class="inv" data-act="inv-edit" data-id="${x.id}">
         <span class="inv-head"><span class="inv-name">${esc(x.name)}</span><span class="pill">${String(x.rate).replace('.', ',')}% EA · ${f[1]}</span></span>
-        <span class="inv-amt">${money(c.value)}</span>
+        <span class="inv-amt">${big(c.value)}</span>
         <span class="inv-facts">
           <span><small>${pay[0]}</small><b>${money(pay[1])}</b></span>
           <span><small>Al final ganas</small><b>${c.gain == null ? '—' : money(c.gain)}</b></span>
           <span><small>Vence</small><b>${c.end ? `${c.end.getDate()} ${c.end.toLocaleDateString('es-CO', { month: 'short' }).replace('.', '')} ${c.end.getFullYear()}` : 'Sin fecha'}</b></span>
         </span></button>`;
     };
-    return head + `<section class="summary"><p class="big">${money(sum(xs, o => o.c.value))}</p>
+    return head + `<section class="summary"><p class="big">${big(sum(xs, o => o.c.value))}</p>
       <p class="sub">invertido${gain ? ` · vas a ganar ${money(gain)} en total` : ''}</p></section>
       <div class="invs">${xs.map(card).join('')}</div>`;
   },
@@ -467,7 +470,7 @@ function openCatDetail(id) {
   const ms = S.movements.filter(m => m.cat === id && m.date.startsWith(ui.month)).sort(byDate);
   const s = sum(ms, m => m.amount), b = c.budget;
   openSheet(sheetTop(esc(c.name), `<button class="link" data-act="cat-edit" data-id="${id}">Editar</button>`) + `
-    <div><p class="big sm ${b && s > b ? 'neg' : ''}">${money(b ? b - s : s)}</p>
+    <div><p class="big sm ${b && s > b ? 'neg' : ''}">${big(b ? b - s : s)}</p>
     <p class="sub">${b ? (s > b ? 'te pasaste' : 'quedan de ' + money(b)) + ' · gastaste ' + money(s) : 'gastado'} en ${monthName(ui.month).toLowerCase()}</p></div>
     <button class="btn primary wide" data-act="add-in" data-id="${id}">${ico('plus', 18)} Anotar gasto en ${esc(c.name)}</button>
     ${ms.length ? `<div class="list">${ms.map(movRow).join('')}</div>` : `<p class="empty" style="padding-block:8px">Nada anotado en este sobre este mes.</p>`}`);

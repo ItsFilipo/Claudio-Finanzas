@@ -58,3 +58,13 @@ The ground is a pale security-paper green. Ink and the accent are deep peso gree
   - Name in the display face, next to a `.pill` for the rate and frequency.
   - Current value at 30px.
   - A 3-column facts row (pago, al final, vence) separated from the rest by a hairline.
+
+## Update: elegance pass
+- **Guilloche:** a banknote-style guilloche (a wave rosette SVG used as a mask, tinted with `--accent` at 22%) fades in behind the big figure on each summary.
+- **Big figures:** `big()` shrinks the `$` sign and raises it (`.cur`).
+- **Depth on press:** buttons and the FAB have a bottom inner edge (`--edge`). On `:active` they sink by 1.5–2px, lose that edge and their shadow, then spring back on release with `--spring` (cubic-bezier(.34,1.56,.64,1)). Envelopes, cards, chips and tab icons use the same spring. The FAB's plus rotates 90° while pressed.
+- **Floating tab bar:** a rounded 24px bar that floats 8px above the safe area, with a soft shadow and a backdrop blur.
+- **Sheets:**
+  - On phones: a bottom sheet with 22px top corners and a grabber, sliding up with `--ease`, over a backdrop that fades in.
+  - On desktop: a centered card sized to its content (`height: fit-content`).
+- **Tab changes:** the incoming view fades in and rises 10px over 0.42s.
