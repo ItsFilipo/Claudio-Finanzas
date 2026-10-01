@@ -148,11 +148,16 @@ const rangeLabel = (from, to) => from === to ? shortDay(from) : `${shortDay(from
 
 // Controles de rango reutilizables (atajos + Desde/Hasta), que recuerdan el último atajo elegido.
 const refresh = st => { if (st.k) Object.assign(st, rangeFor(st.k, todayStr())); return st; };
-const chartState = () => refresh(ui.chart ||= { k: 'todo', by: 'm' });
-const flowState = () => refresh(ui.flowF ||= { k: 'mes', sort: 'new', kind: 'all' });
+const chartState = () => refresh(ui.chart ||= { k: 'sem', by: 'd' });
+const flowState = () => refresh(ui.flowF ||= { k: 'sem', sort: 'new', kind: 'all' });
 const rangeChips = (act, st, presets) => `<div class="chips" role="group" aria-label="Rango de fechas">${presets.map(([k, l]) => `<button type="button" class="chip-btn ${String(st.k) === String(k) ? 'on' : ''}" data-act="${act}" data-k="${k}">${l}</button>`).join('')}</div>
   <div class="two even"><label class="field"><span>Desde</span><input class="text" type="date" name="${act}-from" value="${st.from}" min="${START}-01"></label>
   <label class="field"><span>Hasta</span><input class="text" type="date" name="${act}-to" value="${st.to}" min="${START}-01"></label></div>`;
+const PRESET = { sem: 'Esta semana', mes: 'Este mes', 15: '15 días', 30: '30 días', anio: 'Este año', todo: 'Todo' };
+const dateLabel = st => st.k ? PRESET[st.k] : rangeLabel(st.from, st.to);
+// Barra con dos botones; al tocar uno se abre su cajón de opciones (solo uno a la vez).
+const toolbar = (act, open, items) => `<div class="toolbar">${items.map(([w, icon, label]) => `<button type="button" class="tool ${open === w ? 'on' : ''}" data-act="${act}" data-w="${w}" aria-expanded="${open === w}">${ico(icon, 16)}<span>${label}</span>${ico('down', 14)}</button>`).join('')}</div>`;
+const drawer = (open, w, html) => open === w ? `<div class="drawer">${html}</div>` : '';
 // Cambia una fecha a mano: ordena el rango y suelta el atajo.
 function setDates(st, which, v) { if (!v || v < START + '-01') return; st[which] = v; if (st.from > st.to) { if (which === 'from') st.to = v; else st.from = v; } st.k = null; }
 // Vuelve a dibujar una ventana sin perder dónde ibas.
@@ -379,7 +384,7 @@ function boot() {
     if (e.target.id === 'amt' && e.key === 'Enter') { e.preventDefault(); saveMov(); }
   });
   $('#sheet').addEventListener('click', e => { if (e.target.id === 'sheet') closeSheet(); });
-  $('#sheet').addEventListener('close', () => { if (ui.view === 'dinero') render(); }); // la fila de Entradas muestra el rango que elegiste
+  $('#sheet').addEventListener('close', () => { ui.flowF = ui.flowOpen = ui.chart = ui.chartOpen = null; if (ui.view === 'dinero') render(); }); // lo que cambies vale solo mientras la ventana está abierta
 }
 
 function applyTheme() {
@@ -563,7 +568,7 @@ const VIEWS = {
       <div class="row total"><span class="dot" style="--c:var(--accent)">${ico('target', 16)}</span><span><span class="t">Dinero total</span></span><span class="a ${w.total < 0 ? 'neg' : ''}">${money(w.total)}</span></div>
     </div>
     <div class="actions duo"><button class="btn" data-act="inc-edit">${ico('down2', 18)} Ingreso</button><button class="btn" data-act="tr-edit">${ico('arrows', 18)} Transferir</button></div>
-    <div class="list" style="margin-top:14px">${row('flows', 'arrows', '#4F6275', `Entradas y transferencias`, ff.k === 'mes' ? 'Este mes' : rangeLabel(ff.from, ff.to), nFlows ? `${nFlows}` : '—')}</div>`;
+    <div class="list" style="margin-top:14px">${row('flows', 'arrows', '#4F6275', `Entradas y transferencias`, dateLabel(ff), nFlows ? `${nFlows}` : '—')}</div>`;
   },
 
   inversiones() {
@@ -1073,8 +1078,9 @@ function openPanel(kind) {
         .sort(f.sort === 'high' ? (a, b) => b.amount - a.amount || byDate(a, b) : f.sort === 'low' ? (a, b) => a.amount - b.amount || byDate(a, b) : byDate);
       const rank = f.kind === 'tr' ? [] : incomeRank(S, f.from, f.to), inc = sum(xs.filter(x => x.k === 'in'), x => x.amount), tr = sum(xs.filter(x => x.k === 'tr'), x => x.amount);
       return sheetTop('Entradas y transferencias', '<span></span>') +
-        rangeChips('flow-k', f, [['sem', 'Esta semana'], ['mes', 'Este mes'], [15, '15 días'], [30, '30 días'], ['anio', 'Este año'], ['todo', 'Todo']]) +
-        seg('fkind', [['all', 'Todo'], ['in', 'Ingresos'], ['tr', 'Transferencias']], f.kind) + seg('fsort', [['new', 'Recientes'], ['high', 'Mayor a menor'], ['low', 'Menor a mayor']], f.sort) +
+        toolbar('flow-open', ui.flowOpen, [['date', 'cal', dateLabel(f)], ['sort', 'sliders', { new: 'Recientes', high: 'Mayor a menor', low: 'Menor a mayor' }[f.sort] + (f.kind === 'all' ? '' : ' · ' + { in: 'Ingresos', tr: 'Transferencias' }[f.kind])]]) +
+        drawer(ui.flowOpen, 'date', rangeChips('flow-k', f, [['sem', 'Esta semana'], ['mes', 'Este mes'], [15, '15 días'], [30, '30 días'], ['anio', 'Este año'], ['todo', 'Todo']])) +
+        drawer(ui.flowOpen, 'sort', seg('fkind', [['all', 'Todo'], ['in', 'Ingresos'], ['tr', 'Transferencias']], f.kind) + seg('fsort', [['new', 'Recientes'], ['high', 'Mayor a menor'], ['low', 'Menor a mayor']], f.sort)) +
         `<p class="hint">${rangeLabel(f.from, f.to)} · ${f.kind !== 'tr' ? `entró <b>${money(inc)}</b>` : ''}${f.kind === 'all' ? ' · ' : ''}${f.kind !== 'in' ? `transferiste <b>${money(tr)}</b>` : ''}</p>` +
         (rank.length ? `<h2 class="sec">De dónde te entra más plata</h2><div class="list">${rank.map(g => `<button class="row" data-act="inc-group" data-key="${esc(g.key)}"><span class="dot" style="--c:#2E8C86">${ico('down2', 16)}</span>
           <span><span class="t">${esc(g.name)}</span><span class="s">${g.count} ${g.count === 1 ? 'vez' : 'veces'} · promedio ${money(g.total / g.count)}</span></span><span class="a pos">+${money(g.total)}</span></button>`).join('')}</div>` : '') +
@@ -1083,7 +1089,7 @@ function openPanel(kind) {
     },
     group(key) {
       const f = flowState(), xs = S.incomes.filter(x => !x.debt && (norm(x.note) || 'ingreso') === key && between(x.date, f.from, f.to)).sort(byDate);
-      return sheetTop(esc((xs[0]?.note || 'Ingreso').trim()), '<button class="link" data-act="panel" data-p="flows">Volver</button>') +
+      return sheetTop(esc((xs[0]?.note || 'Ingreso').trim()), '<button class="link" data-act="panel" data-p="flows" data-keep="1">Volver</button>') +
         `<p class="big sm">${big(sum(xs, x => x.amount))}</p><p class="sub" style="margin:0">${xs.length} ${xs.length === 1 ? 'vez' : 'veces'} · ${rangeLabel(f.from, f.to)}</p>
         <div class="list">${xs.map(x => flowRow({ ...x, k: 'in' })).join('')}</div>`;
     },
@@ -1134,8 +1140,9 @@ function openChart() {
   const c = chartState(), t = todayStr(), bs = buckets(S, c.by, c.from, c.to, t), total = sum(bs, b => b.total), n = bs.filter(b => b.total).length;
   const BY = [['d', 'Día'], ['w', 'Semana'], ['q', '15 días'], ['m', 'Mes'], ['t', 'Trimestre']];
   keepScroll(() => openSheet(sheetTop('Gastos en el tiempo') + `
-    ${rangeChips('chart-k', c, [['sem', 'Esta semana'], ['mes', 'Este mes'], [30, '30 días'], ['anio', 'Este año'], ['todo', 'Todo']])}
-    <div class="subs"><span class="subs-t">Agrupar por</span><div class="chips" role="radiogroup" aria-label="Agrupar por">${BY.map(([v, l]) => `<button type="button" class="chip-btn ${c.by === v ? 'on' : ''}" data-act="chart-by" data-by="${v}">${l}</button>`).join('')}</div></div>
+    ${toolbar('chart-open', ui.chartOpen, [['date', 'cal', dateLabel(c)], ['by', 'bars', 'Por ' + { d: 'día', w: 'semana', q: '15 días', m: 'mes', t: 'trimestre' }[c.by]]])}
+    ${drawer(ui.chartOpen, 'date', rangeChips('chart-k', c, [['sem', 'Esta semana'], ['mes', 'Este mes'], [30, '30 días'], ['anio', 'Este año'], ['todo', 'Todo']]))}
+    ${drawer(ui.chartOpen, 'by', `<div class="chips" role="radiogroup" aria-label="Agrupar por">${BY.map(([v, l]) => `<button type="button" class="chip-btn ${c.by === v ? 'on' : ''}" data-act="chart-by" data-by="${v}">${l}</button>`).join('')}</div>`)}
     <figure class="chart" id="bar-chart">${barChart(bs)}<div class="tip" hidden></div></figure>
     <p class="hint">${rangeLabel(c.from, c.to)} · en total <b>${money(total)}</b>${n > 1 ? ` · promedio por ${{ d: 'día', w: 'semana', q: 'quincena', m: 'mes', t: 'trimestre' }[c.by]}: <b>${money(total / bs.length)}</b>` : ''}.${bs.length === 60 ? ' Muestro los últimos 60 periodos; elige menos fechas o agrupa por semana o mes para ver más.' : ' Toca una barra para ver su valor.'}</p>
     <div class="table-wrap"><table class="months"><thead><tr><th>Periodo</th><th>Gastaste</th></tr></thead><tbody>${[...bs].reverse().map(b => `<tr><td>${b.full}${b.now ? ' · en curso' : ''}</td><td>${money(b.total)}</td></tr>`).join('')}</tbody></table></div>`));
@@ -1234,12 +1241,14 @@ function onClick(e) {
       return `<button class="row" data-act="rec-edit" data-id="${r.id}"><span class="dot" style="--c:${c.color}">${ico('repeat', 16)}</span>
         <span><span class="t">${esc(r.name)}</span><span class="s">Cada día ${r.day} · ${r.kind === 'in' ? 'ingreso' : esc(c.name)} · ${esc(meth(r.method))}</span></span><span class="a ${r.kind === 'in' ? 'pos' : ''}">${r.kind === 'in' ? '+' : ''}${money(r.amount)}</span></button>`; }).join('')}</div>` : '') +
       `<p class="hint">Arriendo, Netflix o tu sueldo: los creas una vez y se anotan solos cada mes el día que elijas.</p>`); break;
-    case 'panel': openPanel(el.dataset.p); break;
+    case 'panel': if (el.dataset.p === 'flows' && !el.dataset.keep) { ui.flowF = null; ui.flowOpen = null; } openPanel(el.dataset.p); break;
     case 'period-more': openPeriods(); break;
-    case 'chart': openChart(); break;
-    case 'chart-k': { const c = chartState(); c.k = el.dataset.k; c.by = { sem: 'd', mes: 'd', 30: 'd', anio: 'm', todo: 'm' }[c.k]; openChart(); break; }
-    case 'chart-by': chartState().by = el.dataset.by; openChart(); break;
-    case 'flow-k': flowState().k = el.dataset.k; keepScroll(() => openPanel('flows')); break;
+    case 'chart': ui.chart = ui.chartOpen = null; openChart(); break;
+    case 'chart-k': { const c = chartState(); c.k = el.dataset.k; c.by = { sem: 'd', mes: 'd', 30: 'd', anio: 'm', todo: 'm' }[c.k]; ui.chartOpen = null; openChart(); break; }
+    case 'chart-by': chartState().by = el.dataset.by; ui.chartOpen = null; openChart(); break;
+    case 'chart-open': ui.chartOpen = ui.chartOpen === el.dataset.w ? null : el.dataset.w; openChart(); break;
+    case 'flow-open': ui.flowOpen = ui.flowOpen === el.dataset.w ? null : el.dataset.w; keepScroll(() => openPanel('flows')); break;
+    case 'flow-k': flowState().k = el.dataset.k; ui.flowOpen = null; keepScroll(() => openPanel('flows')); break;
     case 'inc-group': openPanel('group:' + el.dataset.key); break;
     case 'period': ui.period = el.dataset.p; if (el.dataset.n) ui.days = +el.dataset.n; if (ui.period === 'mes' || ui.period === 'dias') ui.month = thisMonth(); if ($('#sheet').open) closeSheet(); render(); break;
     case 'cats': openSheet(sheetTop('Tus sobres', '<button class="link" data-act="cat-edit">Nuevo</button>') + `<div class="list">${S.categories.map(c => `<button class="row" data-act="cat-edit" data-id="${c.id}">

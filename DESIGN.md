@@ -98,3 +98,8 @@ The ground is a pale security-paper green. Ink and the accent are deep peso gree
 - **Range controls** (`rangeChips`): quick `.chip-btn` presets (Esta semana, Este mes, 15/30 días, Este año, Todo) over two date fields (Desde, Hasta). Typing a date drops the preset. They are shared by the time chart and by Entradas y transferencias.
 - **Time chart:** groups by Día, Semana (Mon–Sun), 15 días, Mes or Trimestre, up to 60 bars. Axis labels are spaced by their measured width so they never touch, and the last label hugs the right edge.
 - **Entradas y transferencias:** a kind filter (Todo, Ingresos, Transferencias) and a sort control (Recientes, Mayor a menor, Menor a mayor) sit under the range. The "De dónde te entra más plata" ranking follows the same range.
+
+## Update: quiet toolbar
+- **Toolbar + drawer:** Entradas y transferencias and the time chart open on the current week with only two `.tool` pills (date, and sort or group). A pill opens a `.drawer` card with the chips and date fields; picking a chip closes it.
+- **Temporary:** the range lives only while the sheet is open. Closing it resets to "Esta semana".
+- **iOS dates:** date and month inputs are centered with padding instead of a fixed height, so the text is not pinned to the top.
