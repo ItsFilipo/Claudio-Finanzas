@@ -969,16 +969,19 @@ function payDebt(id, amount, method) {
 }
 
 // Apuestas y acciones: la plata sale del líquido y cuenta como gasto del sobre Inversiones; al cerrar se devuelve lo que recibiste.
+// Rendimiento en porcentaje sobre lo que metiste: +9.900 % o −50 %.
+const pct = (r, base) => !base ? '' : `${r >= 0 ? '+' : '−'}${Math.abs(Math.round(r / base * 1000) / 10).toLocaleString('es-CO')} %`;
+const pctTag = (r, base) => base ? `<b style="color:var(--${r >= 0 ? 'accent' : 'danger'})">${pct(r, base)}</b>` : '';
 function betsList() {
   const ps = S.movements.filter(m => m.pos).sort((a, b) => b.t - a.t);
   const net = sum(ps.filter(m => m.pos.back != null), m => m.pos.back - m.amount);
   const row = m => { const open = m.pos.back == null, r = open ? 0 : m.pos.back - m.amount;
     return `<button class="row" data-act="pos-open" data-id="${m.id}"><span class="dot" style="--c:#2E8C86">${ico('trend', 16)}</span>
-      <span><span class="t">${esc(m.note || 'Sin nombre')}</span><span class="s">${open ? `En juego · metiste el ${fmtDay(m.date)}` : `Recibiste ${money(m.pos.back)}`}</span></span>
+      <span><span class="t">${esc(m.note || 'Sin nombre')}</span><span class="s">${open ? `En juego · metiste el ${fmtDay(m.date)}` : `Recibiste ${money(m.pos.back)} · ${pctTag(r, m.amount)}`}</span></span>
       <span class="a ${open ? '' : r >= 0 ? 'pos' : 'neg'}">${open ? money(m.amount) : (r >= 0 ? '+' : '') + money(r)}</span></button>`; };
   return `<section class="set"><h2 class="sec">Apuestas y acciones</h2>
     <button class="btn wide" data-act="pos-new" style="margin-bottom:12px">${ico('plus', 16)} Anotar una nueva</button>
-    ${ps.length ? `${ps.some(m => m.pos.back != null) ? `<p class="hint" style="margin-bottom:10px">Resultado de las cerradas: <b>${net >= 0 ? '+' : ''}${money(net)}</b></p>` : ''}<div class="list">${ps.map(row).join('')}</div>` : `<p class="hint">Aquí anotas lo que metes en una apuesta o en acciones. Cuando recuperes la plata, la cierras y se ve si ganaste o perdiste.</p>`}</section>`;
+    ${ps.length ? `${ps.some(m => m.pos.back != null) ? `<p class="hint" style="margin-bottom:10px">Resultado de las cerradas: <b>${net >= 0 ? '+' : ''}${money(net)}</b> · ${pctTag(net, sum(ps.filter(m => m.pos.back != null), m => m.amount))}</p>` : ''}<div class="list">${ps.map(row).join('')}</div>` : `<p class="hint">Aquí anotas lo que metes en una apuesta o en acciones. Cuando recuperes la plata, la cierras y se ve si ganaste o perdiste.</p>`}</section>`;
 }
 function openPos() {
   openSheet(sheetTop('Nueva apuesta o acción') + `<form class="form" data-form="pos">
@@ -1013,7 +1016,7 @@ function endPos(m, back, to, date) {
   closePos(S, m, back, to, date);
   commit();
   const r = back - m.amount;
-  toast(r >= 0 ? `Ganaste ${money(r)}` : `Perdiste ${money(-r)}`);
+  toast(`${r >= 0 ? 'Ganaste' : 'Perdiste'} ${money(Math.abs(r))} (${pct(r, m.amount)})`);
 }
 
 function openInv(id) {
