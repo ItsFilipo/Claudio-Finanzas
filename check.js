@@ -213,3 +213,12 @@ console.log('ok apuestas y acciones');
   assert.equal(worth(q).inv, 15000);
 }
 console.log('ok sobre Inversiones único');
+// una sola cuenta con saldo: los gastos con una cuenta sin saldo salen de ella
+{
+  const q = fresh(new Date(2026, 9, 25), false); q.methods[3].base = 50000; q.methods[3].baseT = 0; // Nu con $50.000, Efectivo sin saldo
+  q.movements.push({ id: 'e', t: 5, split: 0, cat: 'comida', amount: 40000, method: 'm0', date: '2026-10-05' });
+  assert.equal(balance(q, q.methods[3]), 10000); assert.equal(worth(q).liquid, 10000);
+  q.methods[1].base = 20000; q.methods[1].baseT = 0; // ahora dos cuentas con saldo: ya no se adivina
+  assert.equal(balance(q, q.methods[3]), 50000);
+}
+console.log('ok una sola fuente de plata');

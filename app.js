@@ -20,10 +20,13 @@ const daysIn = (y, m0) => new Date(y, m0 + 1, 0).getDate();
 const prevMonth = m => { const [y, mo] = m.split('-').map(Number); return ymd(new Date(y, mo - 2, 1)).slice(0, 7); };
 
 // Entradas menos salidas de una cuenta desde que fijaste su saldo (gastos, ingresos, transferencias).
+// Si solo una cuenta lleva saldo, los gastos hechos con una cuenta sin saldo se descuentan de ella: es de donde sale la plata.
+const soleHolder = state => { const t = state.methods.filter(x => !x.credit && x.base != null); return t.length === 1 ? t[0] : null; };
 function flow(state, m) {
+  const lost = soleHolder(state) === m ? state.movements.filter(x => (x.t || 0) > (m.baseT || 0) && state.methods.some(o => o.id === x.method && !o.credit && o.base == null)).reduce((a, x) => a + x.amount, 0) : 0;
   const tot = (xs, f) => (xs || []).filter(x => f(x) && (x.t || 0) > (m.baseT || 0)).reduce((a, x) => a + x.amount, 0);
   return tot(state.incomes, x => x.method === m.id) + tot(state.transfers, x => x.to === m.id)
-    - tot(state.movements, x => x.method === m.id) - tot(state.transfers, x => x.from === m.id)
+    - tot(state.movements, x => x.method === m.id) - tot(state.transfers, x => x.from === m.id) - lost
     + state.movements.filter(x => x.pos?.back && x.pos.to === m.id && x.pos.t > (m.baseT || 0)).reduce((a, x) => a + x.pos.back, 0);
 }
 // Saldo de una cuenta normal (null si no lo llevas). Las tarjetas de crédito no son plata líquida.
@@ -576,7 +579,7 @@ const VIEWS = {
     const row = (panel, icon, color, t, sub, a, cls = '') => `<button class="row" data-act="panel" data-p="${panel}"><span class="dot" style="--c:${color}">${ico(icon, 16)}</span>
       <span><span class="t">${t}</span>${sub ? `<span class="s">${sub}</span>` : ''}</span><span class="a ${cls}">${a}</span></button>`;
     // Una cuenta sin saldo no mueve el líquido: avisa cuáles gastaste sin poner cuánto tenían.
-    const noBal = S.methods.filter(m => !m.credit && m.base == null && S.movements.some(x => x.method === m.id));
+    const noBal = soleHolder(S) ? [] : S.methods.filter(m => !m.credit && m.base == null && S.movements.some(x => x.method === m.id));
     return topBar('Dinero') + banners() + noBal.map(m => `<button class="banner alert" data-act="meth-edit" data-id="${m.id}">${ico('cash', 18)}<span>Pon cuánto tienes en <b>${esc(m.name)}</b> para que el líquido baje cuando gastas con ella.</span></button>`).join('') + `
     <div class="list worth-list">
       ${row('liquid', 'cash', '#4F6275', 'Líquido', `${S.methods.filter(m => !m.credit).length} cuentas`, money(w.liquid), w.liquid < 0 ? 'neg' : '')}
