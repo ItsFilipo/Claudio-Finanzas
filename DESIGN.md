@@ -93,3 +93,8 @@ The ground is a pale security-paper green. Ink and the accent are deep peso gree
 - **Time chart:** `barChart` is a single-series SVG of rounded-top bars in `--accent`. The current period is full strength and the others are at 72%. It has three gridlines, a compact money axis (`$100 mil`, `$1,2 M`) and a tap tooltip. A table below repeats every value, and the period is picked with a `.seg` control (15 días, Mes, Trimestre).
 - **Backup note:** `.nudge` is a single quiet line at the bottom of Sobres with a "Copiar" link and a softer "Luego" link. It appears after 7 days and snoozes for 3.
 - **iOS:** date and month inputs, selects, search and number inputs reset their native appearance so they fit the column on iPhone. Interactive controls are at least 40px tall.
+
+## Update: custom ranges
+- **Range controls** (`rangeChips`): quick `.chip-btn` presets (Esta semana, Este mes, 15/30 días, Este año, Todo) over two date fields (Desde, Hasta). Typing a date drops the preset. They are shared by the time chart and by Entradas y transferencias.
+- **Time chart:** groups by Día, Semana (Mon–Sun), 15 días, Mes or Trimestre, up to 60 bars. Axis labels are spaced by their measured width so they never touch, and the last label hugs the right edge.
+- **Entradas y transferencias:** a kind filter (Todo, Ingresos, Transferencias) and a sort control (Recientes, Mayor a menor, Menor a mayor) sit under the range. The "De dónde te entra más plata" ranking follows the same range.

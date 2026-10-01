@@ -157,15 +157,30 @@ cf.movements.push({ amount: 300000, cat: 'casa', date: '2026-10-02' }, { amount:
 assert.deepEqual(cashflow(cf, '2026-10', '2026-10'), { inc: 2000000, out: 340000, left: 1660000 }); // no cuenta el pago de deuda; el gasto dividido cuenta tu parte
 console.log('ok entró vs salió');
 
-// Gráfica: grupos por 15 días, mes y trimestre
-const { buckets } = require('./app.js');
+// Gráfica: grupos por día, semana, 15 días, mes y trimestre dentro de un rango
+const { buckets, rangeFor, rangeLabel } = require('./app.js');
 const gb = fresh(new Date(2026, 11, 20), false);
 gb.movements.push({ amount: 100, cat: 'comida', date: '2026-10-05' }, { amount: 200, cat: 'comida', date: '2026-10-20' }, { amount: 400, cat: 'comida', date: '2026-11-30' }, { amount: 800, cat: 'comida', date: '2026-12-02' });
-const bm = buckets(gb, 'm', '2026-12-20');
-assert.deepEqual(bm.map(b => [b.short, b.total, b.now]), [['oct', 300, false], ['nov', 400, false], ['dic', 800, true]]);
-const bq = buckets(gb, 'q', '2026-12-20'); // 5 quincenas hasta el 20 de diciembre (la del 16–31 dic ya empezó)
-assert.deepEqual(bq.map(b => [b.short, b.total]), [['1–15 oct', 100], ['16–31 oct', 200], ['1–15 nov', 0], ['16–30 nov', 400], ['1–15 dic', 800], ['16–31 dic', 0]]);
-assert.equal(bq.filter(b => b.now).length, 1);
-assert.deepEqual(buckets(gb, 't', '2026-12-20').map(b => [b.short, b.total]), [['oct–dic', 1500]]);
-assert.equal(buckets(gb, 'm', '2026-10-01').length, 1); // el primer día: un solo periodo
+const T = '2026-12-20', ALL = '2026-10-01';
+assert.deepEqual(buckets(gb, 'm', ALL, T, T).map(b => [b.short, b.total, b.now]), [['oct', 300, false], ['nov', 400, false], ['dic', 800, true]]);
+assert.deepEqual(buckets(gb, 'q', ALL, T, T).map(b => [b.short, b.total]), [['1–15 oct', 100], ['16–31 oct', 200], ['1–15 nov', 0], ['16–30 nov', 400], ['1–15 dic', 800], ['16–31 dic', 0]]);
+assert.deepEqual(buckets(gb, 't', ALL, T, T).map(b => [b.short, b.total]), [['oct–dic', 1500]]);
+assert.equal(buckets(gb, 'm', ALL, ALL, ALL).length, 1);
+// por día: solo los 3 días pedidos, y cada día cuenta lo suyo
+assert.deepEqual(buckets(gb, 'd', '2026-10-04', '2026-10-06', T).map(b => [b.short, b.total]), [['4 oct', 0], ['5 oct', 100], ['6 oct', 0]]);
+// por semana (lunes a domingo): la semana del 5 de oct (lunes) y la del 19
+const bw = buckets(gb, 'w', '2026-10-05', '2026-10-25', T);
+assert.deepEqual(bw.map(b => [b.from, b.to, b.total]), [['2026-10-05', '2026-10-11', 100], ['2026-10-12', '2026-10-18', 0], ['2026-10-19', '2026-10-25', 200]]);
+// un rango que corta un mes: solo cuenta lo que cae dentro del rango
+assert.equal(buckets(gb, 'm', '2026-10-10', '2026-10-31', T)[0].total, 200);
+const bd = buckets(gb, 'd', '2026-10-01', '2026-12-31', T); // 92 días: se queda con los últimos 60
+assert.equal(bd.length, 60); assert.equal(bd.at(-1).from, '2026-12-31');
 console.log('ok grupos de la gráfica');
+// atajos de fechas
+assert.deepEqual(rangeFor('sem', '2026-10-15'), { from: '2026-10-12', to: '2026-10-15' }); // jueves: la semana empezó el lunes 12
+assert.deepEqual(rangeFor(15, '2026-10-20'), { from: '2026-10-06', to: '2026-10-20' });
+assert.deepEqual(rangeFor(30, '2026-10-05'), { from: '2026-10-01', to: '2026-10-05' }); // nunca antes del 1 de octubre de 2026
+assert.deepEqual(rangeFor('anio', '2027-03-10'), { from: '2027-01-01', to: '2027-03-10' });
+assert.equal(rangeLabel('2026-10-05', '2026-10-05'), '5 oct');
+assert.equal(rangeLabel('2026-10-01', '2026-11-18'), '1 oct – 18 nov');
+console.log('ok atajos de fechas');

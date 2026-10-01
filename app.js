@@ -134,17 +134,47 @@ function cashflow(state, from, to) {
   return { inc, out, left: inc - out };
 }
 
-// Gastos agrupados en el tiempo desde que empezaste: por quincena ('q'), mes ('m') o trimestre ('t'). Devuelve los últimos 12.
+// Atajos de fechas: esta semana, este mes, últimos 15/30 días, este año, todo. Nunca antes de que empezó la app.
+const addDays = (d, k) => { const x = new Date(d + 'T00:00'); x.setDate(x.getDate() + k); return ymd(x); };
+function rangeFor(k, today) {
+  const y = today.slice(0, 4), mon = addDays(today, -((new Date(today + 'T00:00').getDay() + 6) % 7));
+  const from = { sem: mon, mes: today.slice(0, 7) + '-01', 15: addDays(today, -14), 30: addDays(today, -29), anio: `${y}-01-01`, todo: START + '-01' }[k];
+  return { from: from < START + '-01' ? START + '-01' : from, to: today };
+}
 const MES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
-function buckets(state, by, today) {
-  const out = [], last = today.slice(0, 7), add = (short, full, from, to) => { if (from.slice(0, 10) <= today) out.push({ short, full, from, to, now: today >= from.slice(0, 10) && today <= (to.length === 7 ? to + '-31' : to) }); };
-  for (let [y, m] = START.split('-').map(Number); `${y}-${pad(m)}` <= last; m > 11 ? (y++, m = 1) : m++) {
-    const mo = `${y}-${pad(m)}`;
-    if (by === 'm') add(MES[m - 1], `${MES[m - 1]} ${y}`, mo, mo);
-    else if (by === 'q') { add(`1–15 ${MES[m - 1]}`, `1 al 15 de ${MES[m - 1]} ${y}`, `${mo}-01`, `${mo}-15`); add(`16–${daysIn(y, m - 1)} ${MES[m - 1]}`, `16 al ${daysIn(y, m - 1)} de ${MES[m - 1]} ${y}`, `${mo}-16`, `${mo}-${daysIn(y, m - 1)}`); }
-    else if ((m - 1) % 3 === 0) { const e = `${y}-${pad(m + 2)}`; add(`${MES[m - 1]}–${MES[m + 1]}`, `${MES[m - 1]} a ${MES[m + 1]} ${y}`, mo, e); }
+const DIA = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
+const shortDay = d => `${+d.slice(8)} ${MES[+d.slice(5, 7) - 1]}`;
+const rangeLabel = (from, to) => from === to ? shortDay(from) : `${shortDay(from)}${from.slice(0, 4) !== to.slice(0, 4) ? ' ' + from.slice(2, 4) : ''} – ${shortDay(to)}${from.slice(0, 4) !== to.slice(0, 4) ? ' ' + to.slice(2, 4) : ''}`;
+
+// Controles de rango reutilizables (atajos + Desde/Hasta), que recuerdan el último atajo elegido.
+const refresh = st => { if (st.k) Object.assign(st, rangeFor(st.k, todayStr())); return st; };
+const chartState = () => refresh(ui.chart ||= { k: 'todo', by: 'm' });
+const flowState = () => refresh(ui.flowF ||= { k: 'mes', sort: 'new', kind: 'all' });
+const rangeChips = (act, st, presets) => `<div class="chips" role="group" aria-label="Rango de fechas">${presets.map(([k, l]) => `<button type="button" class="chip-btn ${String(st.k) === String(k) ? 'on' : ''}" data-act="${act}" data-k="${k}">${l}</button>`).join('')}</div>
+  <div class="two even"><label class="field"><span>Desde</span><input class="text" type="date" name="${act}-from" value="${st.from}" min="${START}-01"></label>
+  <label class="field"><span>Hasta</span><input class="text" type="date" name="${act}-to" value="${st.to}" min="${START}-01"></label></div>`;
+// Cambia una fecha a mano: ordena el rango y suelta el atajo.
+function setDates(st, which, v) { if (!v || v < START + '-01') return; st[which] = v; if (st.from > st.to) { if (which === 'from') st.to = v; else st.from = v; } st.k = null; }
+// Vuelve a dibujar una ventana sin perder dónde ibas.
+const keepScroll = fn => { const d = $('#sheet'), y = d.scrollTop; fn(); d.scrollTop = y; };
+
+// Gastos agrupados en el tiempo entre dos fechas: por día ('d'), semana ('w'), 15 días ('q'), mes ('m') o trimestre ('t').
+// Cada grupo cuenta solo lo que cae dentro del rango; devuelve como máximo los últimos 60.
+function buckets(state, by, from, to, today) {
+  const out = [], add = (short, full, f, t) => { if (f <= to && t >= from) out.push({ short, full, from: f, to: t, now: today >= f && today <= t }); };
+  const y0 = +from.slice(0, 4), m0 = +from.slice(5, 7);
+  if (by === 'd') for (let d = from; d <= to; d = addDays(d, 1)) add(shortDay(d), `${DIA[new Date(d + 'T00:00').getDay()]} ${shortDay(d)} ${d.slice(0, 4)}`, d, d);
+  else if (by === 'w') for (let d = addDays(from, -((new Date(from + 'T00:00').getDay() + 6) % 7)); d <= to; d = addDays(d, 7)) { const e = addDays(d, 6);
+    add(`${+d.slice(8)}–${+e.slice(8)} ${MES[+e.slice(5, 7) - 1]}`, `Semana del ${shortDay(d)} al ${shortDay(e)} ${e.slice(0, 4)}`, d, e); }
+  else for (let [y, m] = [y0, m0]; `${y}-${pad(m)}` <= to.slice(0, 7); m > 11 ? (y++, m = 1) : m++) {
+    const mo = `${y}-${pad(m)}`, n = daysIn(y, m - 1);
+    if (by === 'm') add(MES[m - 1], `${MES[m - 1]} ${y}`, `${mo}-01`, `${mo}-${n}`);
+    else if (by === 'q') { add(`1–15 ${MES[m - 1]}`, `1 al 15 de ${MES[m - 1]} ${y}`, `${mo}-01`, `${mo}-15`); add(`16–${n} ${MES[m - 1]}`, `16 al ${n} de ${MES[m - 1]} ${y}`, `${mo}-16`, `${mo}-${n}`); }
+    else if ((m - 1) % 3 === 0 || (y === y0 && m === m0)) { const q = Math.floor((m - 1) / 3) * 3 + 1, e = `${y}-${pad(q + 2)}`;
+      add(`${MES[q - 1]}–${MES[q + 1]}`, `${MES[q - 1]} a ${MES[q + 1]} ${y}`, `${y}-${pad(q)}-01`, `${e}-${daysIn(y, q + 1)}`); }
   }
-  return out.slice(-12).map(b => ({ ...b, total: state.movements.filter(x => between(x.date, b.from, b.to)).reduce((a, x) => a + own(x), 0) }));
+  const seen = new Set();
+  return out.filter(b => !seen.has(b.from) && seen.add(b.from)).slice(-60).map(b => ({ ...b, total: state.movements.filter(x => between(x.date, b.from < from ? from : b.from, b.to > to ? to : b.to)).reduce((a, x) => a + own(x), 0) }));
 }
 
 // Búsqueda en todos los gastos por nota, sobre, cuenta o #etiqueta.
@@ -338,7 +368,9 @@ function boot() {
   });
   document.addEventListener('change', e => {
     if (e.target.id === 'date') refreshWhen();
-    if (e.target.name === 'chartby') { ui.chartBy = e.target.value; openChart(); }
+    if (e.target.name === 'chart-k-from' || e.target.name === 'chart-k-to') { setDates(chartState(), e.target.name.endsWith('from') ? 'from' : 'to', e.target.value); openChart(); }
+    if (e.target.name === 'flow-k-from' || e.target.name === 'flow-k-to') { setDates(flowState(), e.target.name.endsWith('from') ? 'from' : 'to', e.target.value); keepScroll(() => openPanel('flows')); }
+    if (e.target.name === 'fkind' || e.target.name === 'fsort') { flowState()[e.target.name === 'fkind' ? 'kind' : 'sort'] = e.target.value; keepScroll(() => openPanel('flows')); }
     if (e.target.name === 'horizon') { ui.invYears = +e.target.value; openInvDetail(e.target.dataset.id); }
     if (e.target.name === 'sort') { ui.sort = e.target.value; $('#mov-results').innerHTML = movResults(); }
     if (e.target.name === 'theme') { S.settings.theme = e.target.value; applyTheme(); commit(); }
@@ -347,6 +379,7 @@ function boot() {
     if (e.target.id === 'amt' && e.key === 'Enter') { e.preventDefault(); saveMov(); }
   });
   $('#sheet').addEventListener('click', e => { if (e.target.id === 'sheet') closeSheet(); });
+  $('#sheet').addEventListener('close', () => { if (ui.view === 'dinero') render(); }); // la fila de Entradas muestra el rango que elegiste
 }
 
 function applyTheme() {
@@ -517,7 +550,7 @@ const VIEWS = {
 
   dinero() {
     const w = worth(S), cards = S.methods.filter(m => m.credit);
-    const pr = period(), nFlows = S.incomes.filter(x => inPeriod(x.date, pr)).length + S.transfers.filter(x => inPeriod(x.date, pr)).length;
+    const ff = flowState(), nFlows = S.incomes.filter(x => between(x.date, ff.from, ff.to)).length + S.transfers.filter(x => between(x.date, ff.from, ff.to)).length;
     const row = (panel, icon, color, t, sub, a, cls = '') => `<button class="row" data-act="panel" data-p="${panel}"><span class="dot" style="--c:${color}">${ico(icon, 16)}</span>
       <span><span class="t">${t}</span>${sub ? `<span class="s">${sub}</span>` : ''}</span><span class="a ${cls}">${a}</span></button>`;
     return topBar('Dinero') + banners() + `
@@ -530,7 +563,7 @@ const VIEWS = {
       <div class="row total"><span class="dot" style="--c:var(--accent)">${ico('target', 16)}</span><span><span class="t">Dinero total</span></span><span class="a ${w.total < 0 ? 'neg' : ''}">${money(w.total)}</span></div>
     </div>
     <div class="actions duo"><button class="btn" data-act="inc-edit">${ico('down2', 18)} Ingreso</button><button class="btn" data-act="tr-edit">${ico('arrows', 18)} Transferir</button></div>
-    <div class="list" style="margin-top:14px">${row('flows', 'arrows', '#4F6275', `Entradas y transferencias`, pr.label, nFlows ? `${nFlows}` : '—')}</div>`;
+    <div class="list" style="margin-top:14px">${row('flows', 'arrows', '#4F6275', `Entradas y transferencias`, ff.k === 'mes' ? 'Este mes' : rangeLabel(ff.from, ff.to), nFlows ? `${nFlows}` : '—')}</div>`;
   },
 
   inversiones() {
@@ -1035,18 +1068,23 @@ function openPanel(kind) {
         : `<p class="hint">${dir === 'in' ? 'Nadie te debe plata.' : 'No le debes plata a nadie.'}</p>`);
     },
     flows() {
-      const pr = period(), xs = [...S.incomes.map(x => ({ ...x, k: 'in' })), ...S.transfers.map(x => ({ ...x, k: 'tr' }))].filter(x => inPeriod(x.date, pr)).sort(byDate);
-      const rank = incomeRank(S, pr.from, pr.to);
-      return sheetTop('Entradas y transferencias', '<span></span>') + `<p class="sub" style="margin:0">${pr.label}</p>` +
+      const f = flowState(), seg = (name, opts, v) => `<div class="seg tight" role="radiogroup">${opts.map(([k, l]) => `<label><input type="radio" name="${name}" value="${k}" ${v === k ? 'checked' : ''}><span>${l}</span></label>`).join('')}</div>`;
+      const xs = [...S.incomes.map(x => ({ ...x, k: 'in' })), ...S.transfers.map(x => ({ ...x, k: 'tr' }))].filter(x => between(x.date, f.from, f.to) && (f.kind === 'all' || f.kind === x.k))
+        .sort(f.sort === 'high' ? (a, b) => b.amount - a.amount || byDate(a, b) : f.sort === 'low' ? (a, b) => a.amount - b.amount || byDate(a, b) : byDate);
+      const rank = f.kind === 'tr' ? [] : incomeRank(S, f.from, f.to), inc = sum(xs.filter(x => x.k === 'in'), x => x.amount), tr = sum(xs.filter(x => x.k === 'tr'), x => x.amount);
+      return sheetTop('Entradas y transferencias', '<span></span>') +
+        rangeChips('flow-k', f, [['sem', 'Esta semana'], ['mes', 'Este mes'], [15, '15 días'], [30, '30 días'], ['anio', 'Este año'], ['todo', 'Todo']]) +
+        seg('fkind', [['all', 'Todo'], ['in', 'Ingresos'], ['tr', 'Transferencias']], f.kind) + seg('fsort', [['new', 'Recientes'], ['high', 'Mayor a menor'], ['low', 'Menor a mayor']], f.sort) +
+        `<p class="hint">${rangeLabel(f.from, f.to)} · ${f.kind !== 'tr' ? `entró <b>${money(inc)}</b>` : ''}${f.kind === 'all' ? ' · ' : ''}${f.kind !== 'in' ? `transferiste <b>${money(tr)}</b>` : ''}</p>` +
         (rank.length ? `<h2 class="sec">De dónde te entra más plata</h2><div class="list">${rank.map(g => `<button class="row" data-act="inc-group" data-key="${esc(g.key)}"><span class="dot" style="--c:#2E8C86">${ico('down2', 16)}</span>
           <span><span class="t">${esc(g.name)}</span><span class="s">${g.count} ${g.count === 1 ? 'vez' : 'veces'} · promedio ${money(g.total / g.count)}</span></span><span class="a pos">+${money(g.total)}</span></button>`).join('')}</div>` : '') +
-        (xs.length ? `<h2 class="sec">Todas</h2><div class="list">${xs.map(flowRow).join('')}</div>`
-        : `<p class="hint">No hay entradas ni transferencias ${pr.words}. Usa los botones Ingreso o Transferir.</p>`);
+        (xs.length ? `<h2 class="sec">${f.sort === 'high' ? 'De mayor a menor' : f.sort === 'low' ? 'De menor a mayor' : 'Más recientes primero'}</h2><div class="list">${xs.map(flowRow).join('')}</div>`
+        : `<p class="hint">No hay nada en estas fechas. Prueba con otro rango o usa los botones Ingreso y Transferir.</p>`);
     },
     group(key) {
-      const pr = period(), xs = S.incomes.filter(x => !x.debt && (norm(x.note) || 'ingreso') === key && inPeriod(x.date, pr)).sort(byDate);
+      const f = flowState(), xs = S.incomes.filter(x => !x.debt && (norm(x.note) || 'ingreso') === key && between(x.date, f.from, f.to)).sort(byDate);
       return sheetTop(esc((xs[0]?.note || 'Ingreso').trim()), '<button class="link" data-act="panel" data-p="flows">Volver</button>') +
-        `<p class="big sm">${big(sum(xs, x => x.amount))}</p><p class="sub" style="margin:0">${xs.length} ${xs.length === 1 ? 'vez' : 'veces'} · ${pr.label}</p>
+        `<p class="big sm">${big(sum(xs, x => x.amount))}</p><p class="sub" style="margin:0">${xs.length} ${xs.length === 1 ? 'vez' : 'veces'} · ${rangeLabel(f.from, f.to)}</p>
         <div class="list">${xs.map(x => flowRow({ ...x, k: 'in' })).join('')}</div>`;
     },
   };
@@ -1081,23 +1119,26 @@ function barChart(bs) {
   const W = 340, H = 200, L = 52, R = 6, T = 22, B = 28, max = Math.max(...bs.map(b => b.total), 1);
   const mag = 10 ** Math.floor(Math.log10(max)), r = max / mag, top = (r <= 1 ? 1 : r <= 2 ? 2 : r <= 5 ? 5 : 10) * mag;
   const bw = (W - L - R) / bs.length, w = Math.min(bw * .64, 34), Y = v => T + (1 - v / top) * (H - T - B);
-  const every = Math.ceil((Math.max(...bs.map(b => b.short.length)) * 6) / bw);
+  const lw = Math.max(...bs.map(b => b.short.length)) * 7, every = Math.max(1, Math.ceil(lw * 1.5 / bw)); // ancho de una etiqueta y cada cuántas barras poner una
   const bar = (b, i) => { const x = L + i * bw + (bw - w) / 2, y = Y(b.total), h = H - B - y, rad = Math.min(4, h);
     return b.total ? `<path class="bar${b.now ? ' now' : ''}" data-i="${i}" d="M${x},${H - B}V${y + rad}Q${x},${y} ${x + rad},${y}H${x + w - rad}Q${x + w},${y} ${x + w},${y + rad}V${H - B}Z"/>` : `<rect class="bar zero" data-i="${i}" x="${x}" y="${H - B - 2}" width="${w}" height="2" rx="1"/>`; };
   return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Gastos por periodo">
     ${[0, top / 2, top].map(v => `<line x1="${L}" x2="${W - R}" y1="${Y(v)}" y2="${Y(v)}" class="grid"/><text x="${L - 6}" y="${Y(v) + 4}" class="axis" text-anchor="end">${v ? compact(v) : '$0'}</text>`).join('')}
     ${bs.map(bar).join('')}
-    ${bs.map((b, i) => (i % every === (bs.length - 1) % every) ? `<text x="${i === bs.length - 1 ? W - R : L + i * bw + bw / 2}" y="${H - 8}" class="axis${b.now ? ' strong' : ''}" text-anchor="${i === bs.length - 1 ? 'end' : 'middle'}">${b.short}</text>` : '').join('')}
+    ${bs.map((b, i) => { if ((bs.length - 1 - i) % every) return ''; const cx = L + i * bw + bw / 2, end = cx + lw / 2 > W - R;
+      return `<text x="${end ? W - R : cx}" y="${H - 8}" class="axis${b.now ? ' strong' : ''}" text-anchor="${end ? 'end' : 'middle'}">${b.short}</text>`; }).join('')}
     <rect x="0" y="0" width="${W}" height="${H}" fill="transparent" class="hit"/>
   </svg>`;
 }
 function openChart() {
-  const by = ui.chartBy || 'm', bs = buckets(S, by, todayStr()), total = sum(bs, b => b.total), n = bs.filter(b => b.total).length;
-  openSheet(sheetTop('Gastos en el tiempo') + `
-    <div class="seg" role="radiogroup" aria-label="Agrupar por">${[['q', '15 días'], ['m', 'Mes'], ['t', 'Trimestre']].map(([v, l]) => `<label><input type="radio" name="chartby" value="${v}" ${by === v ? 'checked' : ''}><span>${l}</span></label>`).join('')}</div>
+  const c = chartState(), t = todayStr(), bs = buckets(S, c.by, c.from, c.to, t), total = sum(bs, b => b.total), n = bs.filter(b => b.total).length;
+  const BY = [['d', 'Día'], ['w', 'Semana'], ['q', '15 días'], ['m', 'Mes'], ['t', 'Trimestre']];
+  keepScroll(() => openSheet(sheetTop('Gastos en el tiempo') + `
+    ${rangeChips('chart-k', c, [['sem', 'Esta semana'], ['mes', 'Este mes'], [30, '30 días'], ['anio', 'Este año'], ['todo', 'Todo']])}
+    <div class="subs"><span class="subs-t">Agrupar por</span><div class="chips" role="radiogroup" aria-label="Agrupar por">${BY.map(([v, l]) => `<button type="button" class="chip-btn ${c.by === v ? 'on' : ''}" data-act="chart-by" data-by="${v}">${l}</button>`).join('')}</div></div>
     <figure class="chart" id="bar-chart">${barChart(bs)}<div class="tip" hidden></div></figure>
-    <p class="hint">${n > 1 ? `Promedio por ${{ q: 'quincena', m: 'mes', t: 'trimestre' }[by]}: <b>${money(total / bs.length)}</b>. Toca una barra para ver su valor.` : 'Cuando tengas más de un periodo con gastos, aquí ves cómo vas subiendo o bajando.'}</p>
-    <div class="table-wrap"><table class="months"><thead><tr><th>Periodo</th><th>Gastaste</th></tr></thead><tbody>${[...bs].reverse().map(b => `<tr><td>${b.full}${b.now ? ' · en curso' : ''}</td><td>${money(b.total)}</td></tr>`).join('')}</tbody></table></div>`);
+    <p class="hint">${rangeLabel(c.from, c.to)} · en total <b>${money(total)}</b>${n > 1 ? ` · promedio por ${{ d: 'día', w: 'semana', q: 'quincena', m: 'mes', t: 'trimestre' }[c.by]}: <b>${money(total / bs.length)}</b>` : ''}.${bs.length === 60 ? ' Muestro los últimos 60 periodos; elige menos fechas o agrupa por semana o mes para ver más.' : ' Toca una barra para ver su valor.'}</p>
+    <div class="table-wrap"><table class="months"><thead><tr><th>Periodo</th><th>Gastaste</th></tr></thead><tbody>${[...bs].reverse().map(b => `<tr><td>${b.full}${b.now ? ' · en curso' : ''}</td><td>${money(b.total)}</td></tr>`).join('')}</tbody></table></div>`));
   const fig = $('#bar-chart'), svg = fig.querySelector('svg'), tip = fig.querySelector('.tip');
   const show = e => { const r = svg.getBoundingClientRect(), x = (e.clientX - r.left) / r.width * 340, i = Math.max(0, Math.min(bs.length - 1, Math.floor((x - 52) / ((340 - 58) / bs.length))));
     svg.querySelectorAll('.bar').forEach(el => el.classList.toggle('sel', +el.dataset.i === i));
@@ -1196,6 +1237,9 @@ function onClick(e) {
     case 'panel': openPanel(el.dataset.p); break;
     case 'period-more': openPeriods(); break;
     case 'chart': openChart(); break;
+    case 'chart-k': { const c = chartState(); c.k = el.dataset.k; c.by = { sem: 'd', mes: 'd', 30: 'd', anio: 'm', todo: 'm' }[c.k]; openChart(); break; }
+    case 'chart-by': chartState().by = el.dataset.by; openChart(); break;
+    case 'flow-k': flowState().k = el.dataset.k; keepScroll(() => openPanel('flows')); break;
     case 'inc-group': openPanel('group:' + el.dataset.key); break;
     case 'period': ui.period = el.dataset.p; if (el.dataset.n) ui.days = +el.dataset.n; if (ui.period === 'mes' || ui.period === 'dias') ui.month = thisMonth(); if ($('#sheet').open) closeSheet(); render(); break;
     case 'cats': openSheet(sheetTop('Tus sobres', '<button class="link" data-act="cat-edit">Nuevo</button>') + `<div class="list">${S.categories.map(c => `<button class="row" data-act="cat-edit" data-id="${c.id}">
@@ -1311,7 +1355,7 @@ function onSubmit(e) {
   commit();
 }
 
-if (typeof module !== 'undefined') module.exports = { buckets, cashflow, subTotals, incomeRank, norm, spentIn, track, trackAll, money, digits, ymd, spentByCat, postRecurring, fresh, balance, worth, toTable, invest, cardDebt, cardAlerts, insights, search, tagsOf, goalPlan, own };
+if (typeof module !== 'undefined') module.exports = { rangeFor, rangeLabel, buckets, cashflow, subTotals, incomeRank, norm, spentIn, track, trackAll, money, digits, ymd, spentByCat, postRecurring, fresh, balance, worth, toTable, invest, cardDebt, cardAlerts, insights, search, tagsOf, goalPlan, own };
 else {
   boot();
   // App instalada: funciona sin internet y pide al navegador no borrar los datos.
