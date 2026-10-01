@@ -91,7 +91,7 @@ function subTotals(state, catId, from, to) {
   return [...g.values()].sort((a, b) => b.total - a.total);
 }
 const toTable = state => ['Fecha\tSobre\tSubcategoría\tNota\tMétodo\tValor', ...[...state.movements].sort((a, b) => a.date.localeCompare(b.date)).map(m =>
-  [m.date, state.categories.find(c => c.id === m.cat)?.name || 'Sin sobre', m.sub || '', m.note || '', state.methods.find(x => x.id === m.method)?.name || '', m.amount]
+  [m.date, state.categories.find(c => c.id === m.cat)?.name || 'Sin sobre', m.sub || '', m.note || '', state.methods.find(x => x.id === m.method)?.name || '', m.amount - (m.pos?.back || 0)]
     .map(v => String(v).replace(/[\t\n]/g, ' ')).join('\t'))].join('\n');
 
 // Gasto por sobre entre dos fechas incluidas: meses ('2026-10' a '2026-12') o días ('2026-10-03' a '2026-11-18').
@@ -466,11 +466,11 @@ const banners = () =>
 
 const movRow = m => {
   const c = cat(m.cat), title = m.note || m.sub || c.name;
-  const parts = [title !== c.name && c.name, m.sub && title !== m.sub && m.sub, meth(m.method), m.rec && 'recurrente', m.split && 'te deben ' + money(m.split)].filter(Boolean);
+  const parts = [title !== c.name && c.name, m.sub && title !== m.sub && m.sub, meth(m.method), m.rec && 'recurrente', m.pos?.back != null && `metiste ${money(m.amount)}, recibiste ${money(m.pos.back)}`, m.split && 'te deben ' + money(m.split)].filter(Boolean);
   return `<button class="row" data-act="edit-mov" data-id="${m.id}">
     <span class="dot" style="--c:${c.color}">${ico(c.icon, 16)}</span>
     <span><span class="t">${esc(title)}</span><span class="s">${parts.map(esc).join(' · ')}</span></span>
-    <span class="a">${money(m.amount)}</span></button>`;
+    <span class="a ${own(m) < 0 ? 'pos' : ''}">${own(m) < 0 ? '+' + money(-own(m)) : money(own(m))}</span></button>`;
 };
 
 function envelope(c, spent) {
@@ -533,7 +533,7 @@ function movResults() {
     <div class="seg" role="radiogroup" aria-label="Ordenar" style="margin-top:12px">${[['new', 'Recientes'], ['high', 'Más caros'], ['low', 'Más baratos']]
       .map(([v, l]) => `<label><input type="radio" name="sort" value="${v}" ${sort === v ? 'checked' : ''}><span>${l}</span></label>`).join('')}</div>`;
   if (sort !== 'new') {
-    const sorted = [...list].sort((a, b) => (sort === 'high' ? b.amount - a.amount : a.amount - b.amount) || byDate(a, b));
+    const sorted = [...list].sort((a, b) => (sort === 'high' ? own(b) - own(a) : own(a) - own(b)) || byDate(a, b));
     return head + `<div class="list" style="margin-top:16px">${sorted.map(m => movRow(m).replace('<span class="s">', `<span class="s">${dayLabel(m.date)}${pr.p !== 'mes' ? ' de ' + monthName(m.date.slice(0, 7)).toLowerCase() : ''} · `)).join('')}</div>`;
   }
   const days = new Map();
@@ -860,7 +860,7 @@ function openYear(y) {
   const nav = (k, ok, label) => `<button type="button" class="icon-btn" data-act="year" data-y="${y + k}" aria-label="${label}" ${ok ? '' : 'disabled'}>${ico(k < 0 ? 'left' : 'right')}</button>`;
   const months = Array.from({ length: 12 }, (_, i) => {
     const m = `${y}-${pad(i + 1)}`, off = m < START || m > thisMonth();
-    const spent = sum(S.movements.filter(x => x.date.startsWith(m)), x => x.amount);
+    const spent = sum(S.movements.filter(x => x.date.startsWith(m)), own);
     return `<button class="month-cell" data-act="pick-month" data-m="${m}" ${off ? 'disabled' : ''} aria-current="${m === ui.month}">
       <span>${cap(new Date(y, i, 1).toLocaleDateString('es-CO', { month: 'short' }).replace('.', ''))}</span><b>${off ? '—' : money(spent)}</b></button>`;
   }).join('');
