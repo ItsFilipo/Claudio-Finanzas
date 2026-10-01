@@ -497,7 +497,7 @@ const VIEWS = {
 
   inversiones() {
     const now = new Date(), xs = S.investments.map(x => ({ x, c: invest(x, now) }));
-    const head = topBar('Inversiones', `<button class="btn small" data-act="inv-edit">${ico('plus', 16)} Nueva</button>`) + banners();
+    const head = topBar('Inversión', `<button class="btn small" data-act="inv-edit">${ico('plus', 16)} Nueva</button>`) + banners();
     if (!xs.length) return head + `<div class="empty"><p>Registra un CDT, una cajita o cualquier inversión con su tasa EA y mira cuánto te paga y cuánto vas a ganar.</p>
       <button class="btn primary" data-act="inv-edit">${ico('plus', 18)} Agregar inversión</button></div>`;
     const gain = sum(xs, o => o.c.gain || 0);
