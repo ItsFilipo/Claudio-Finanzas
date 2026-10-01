@@ -575,7 +575,9 @@ const VIEWS = {
     const ff = flowState(), nFlows = S.incomes.filter(x => between(x.date, ff.from, ff.to)).length + S.transfers.filter(x => between(x.date, ff.from, ff.to)).length;
     const row = (panel, icon, color, t, sub, a, cls = '') => `<button class="row" data-act="panel" data-p="${panel}"><span class="dot" style="--c:${color}">${ico(icon, 16)}</span>
       <span><span class="t">${t}</span>${sub ? `<span class="s">${sub}</span>` : ''}</span><span class="a ${cls}">${a}</span></button>`;
-    return topBar('Dinero') + banners() + `
+    // Una cuenta sin saldo no mueve el líquido: avisa cuáles gastaste sin poner cuánto tenían.
+    const noBal = S.methods.filter(m => !m.credit && m.base == null && S.movements.some(x => x.method === m.id));
+    return topBar('Dinero') + banners() + noBal.map(m => `<button class="banner alert" data-act="meth-edit" data-id="${m.id}">${ico('cash', 18)}<span>Pon cuánto tienes en <b>${esc(m.name)}</b> para que el líquido baje cuando gastas con ella.</span></button>`).join('') + `
     <div class="list worth-list">
       ${row('liquid', 'cash', '#4F6275', 'Líquido', `${S.methods.filter(m => !m.credit).length} cuentas`, money(w.liquid), w.liquid < 0 ? 'neg' : '')}
       ${w.inv ? `<button class="row" data-act="tab" data-tab="inversiones"><span class="dot" style="--c:#2E8C86">${ico('trend', 16)}</span><span><span class="t">Inversiones</span></span><span class="a pos">+${money(w.inv)}</span></button>` : ''}
