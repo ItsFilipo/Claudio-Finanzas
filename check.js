@@ -234,3 +234,13 @@ console.log('ok una sola fuente de plata');
   assert.equal(worth(q).liquid, 94000);
 }
 console.log('ok perder una apuesta');
+// CDT: con intereses diarios el patrimonio sube, y los pagados aparte también cuentan
+{
+  const q = fresh(new Date(2026, 9, 25), false), t = new Date(2026, 9, 31); q.methods[3].base = 80000; q.methods[3].baseT = 0;
+  q.investments.push({ id: 'c', name: 'CDT', amount: 20000, rate: 9, freq: 'd', compound: true, start: '2026-10-01', months: 12 });
+  q.transfers.push({ id: 't', t: 5, amount: 20000, from: 'm3', to: null, date: '2026-10-01', invId: 'c' });
+  assert.equal(worth(q, t).liquid, 60000);
+  const a = worth(q, t); assert.ok(a.inv > 20000 && a.total > 80000, JSON.stringify(a));
+  q.investments[0].compound = false; assert.ok(worth(q, t).total > 80000);
+}
+console.log('ok CDT sale del líquido y suma en el total');

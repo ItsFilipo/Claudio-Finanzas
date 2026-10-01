@@ -83,7 +83,7 @@ function worth(state, now = new Date()) {
   const owed = state.debts.filter(d => d.dir === 'in').reduce((a, d) => a + d.amount, 0);
   const owe = state.debts.filter(d => d.dir === 'out').reduce((a, d) => a + d.amount, 0);
   // Solo inversiones de renta fija (CDT, cajitas). Las apuestas y acciones no suman al dinero total.
-  const inv = (state.investments || []).reduce((a, x) => a + invest(x, now).value, 0);
+  const inv = (state.investments || []).reduce((a, x) => { const c = invest(x, now); return a + c.value + (x.compound ? 0 : c.earned); }, 0);
   return { liquid, inv, owed, owe, cards, total: liquid + inv + owed - owe - cards };
 }
 // Gastos como tabla para pegar en Excel o Google Sheets.
@@ -1029,6 +1029,7 @@ function openInv(id) {
       <label class="field"><span>Desde</span><input class="text" type="date" name="start" value="${x.start}" required></label>
       <label class="field"><span>Plazo (meses)</span><input class="text" type="number" name="months" min="1" max="600" inputmode="numeric" value="${x.months || ''}" placeholder="Sin plazo"></label>
     </div>
+    ${id ? '' : `<label class="field"><span>¿De qué cuenta sale la plata?</span><select class="text" name="method"><option value="">No descontar de ninguna cuenta</option>${S.methods.filter(m => !m.credit).map(m => `<option value="${m.id}" ${m.id === S.settings.method ? 'selected' : ''}>${esc(m.name)}</option>`).join('')}</select></label>`}
     <label class="check"><input type="checkbox" name="ret" ${x.ret ? 'checked' : ''}><span>Me descuentan retención en la fuente (4% de los intereses, como en los CDT)</span></label>
     <p class="hint" id="inv-hint">Si eliges "al vencimiento", pon el plazo.</p>
     ${actions(id, 'inv-del')}</form>`, id ? null : 'input[name=name]');
@@ -1349,7 +1350,7 @@ function onClick(e) {
     case 'pos-lost': { const m = S.movements.find(x => x.id === id); closeSheet(); endPos(m, 0, m.method, todayStr()); break; }
     case 'pos-del': S.movements = S.movements.filter(x => x.id !== id); closeSheet(); commit(); toast('Eliminada'); break;
     case 'inv-detail': ui.invYears = 0; openInvDetail(id); break;
-    case 'inv-del': S.investments = S.investments.filter(x => x.id !== id); closeSheet(); commit(); toast('Inversión eliminada'); break;
+    case 'inv-del': S.investments = S.investments.filter(x => x.id !== id); S.transfers = S.transfers.filter(x => x.invId !== id); closeSheet(); commit(); toast('Inversión eliminada'); break;
     case 'debt-del': S.debts = S.debts.filter(d => d.id !== id); closeSheet(); commit(); toast('Deuda eliminada'); break;
     case 'restore':
       openSheet(sheetTop('Restaurar respaldo') + `<form class="form" data-form="restore"><p class="hint" id="rs-hint">Pega aquí el texto de un respaldo. Reemplaza todo lo que hay ahora.</p>
@@ -1397,6 +1398,11 @@ function onSubmit(e) {
         return;
       }
       upsert(S.investments, { name: d.name.trim(), amount: digits(d.amount), rate, freq: d.freq, compound: d.mode === 'sum', start: d.start, months: months || null, ret: !!d.ret });
+      // Al abrirla, la plata sale de la cuenta que elegiste (queda en Entradas y transferencias) y pasa a ser inversión, no líquido.
+      if (!id && d.method && digits(d.amount)) {
+        const inv = S.investments.at(-1); track(S, d.method, Date.now());
+        S.transfers.push({ id: uid(), t: Date.now(), amount: inv.amount, from: d.method, to: null, note: `Inversión: ${inv.name}`, date: d.start >= START && d.start <= todayStr() ? d.start : todayStr(), invId: inv.id });
+      }
       break;
     }
     case 'range':
