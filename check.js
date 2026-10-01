@@ -25,7 +25,7 @@ assert.ok(fresh(new Date(2026, 10, 3), true).movements.every(m => m.date.startsW
 console.log('ok');
 
 // Saldos, deudas y exportar
-const { balance, worth, toTable } = require('./app.js');
+const { norm, tidyInv, balance, worth, toTable } = require('./app.js');
 const w = fresh(new Date(2026, 9, 5), false);
 w.methods[1].base = 100000; w.methods[1].baseT = 10;
 w.movements.push({ amount: 20000, cat: 'comida', method: 'm1', date: '2026-10-05', t: 5 }); // antes del saldo: no descuenta
@@ -201,3 +201,15 @@ console.log('ok atajos de fechas');
   assert.equal(balance(p, p.methods[0]), 30000); assert.equal(spentByCat(p, '2026-10').inversiones, 50000);
 }
 console.log('ok apuestas y acciones');
+// un solo sobre Inversiones y todo gasto en él cuenta como inversión
+{
+  const q = fresh(new Date(2026, 9, 25), false);
+  q.categories.push({ id: 'inversiones', name: 'Inversiones', icon: 'trend', color: '#2E8C86', budget: 0, subs: [] }, { id: 'zz', name: 'inversiones ', icon: 'dots', color: '#111', budget: 0, subs: ['Bolsa'] });
+  q.movements.push({ id: 'a', t: 1, split: 0, cat: 'zz', amount: 10000, method: 'm0', date: '2026-10-02' }, { id: 'b', t: 2, split: 0, cat: 'inversiones', amount: 5000, method: 'm0', date: '2026-10-03', pos: { back: null } });
+  tidyInv(q);
+  assert.equal(q.categories.filter(c => norm(c.name) === 'inversiones').length, 1);
+  assert.equal(q.categories.find(c => norm(c.name) === 'inversiones').subs[0], 'Bolsa'); // se queda con el tuyo
+  assert.ok(q.movements.every(m => m.cat === 'inversiones' && m.pos && m.pos.back == null));
+  assert.equal(worth(q).inv, 15000);
+}
+console.log('ok sobre Inversiones único');

@@ -354,7 +354,6 @@ function boot() {
   delete S.settings.fakeToday;
   S.settings.since ||= ymd(new Date());
   S.categories.forEach(c => { c.subs ||= []; });
-  if (!S.categories.some(c => c.id === 'inversiones')) S.categories.push({ id: 'inversiones', name: 'Inversiones', icon: 'trend', color: '#2E8C86', budget: 0, subs: [] });
   for (const k of ['incomes', 'transfers', 'quick']) S[k] ||= [];
   trackAll(S);
   S.categories.forEach(c => { c.budget = 0; }); // por ahora sin presupuestos: solo se registra lo gastado
@@ -399,7 +398,20 @@ function applyTheme() {
   else r.removeAttribute('data-theme');
 }
 
+// Un solo sobre "Inversiones": si ya habías creado uno con ese nombre, se usa ese y se junta todo ahí.
+// Todo gasto anotado en él cuenta como inversión abierta (sale en la pestaña Inversión).
+function tidyInv(state) {
+  const mine = state.categories.filter(c => norm(c.name) === 'inversiones');
+  const keep = mine.find(c => c.id !== 'inversiones') || mine[0] || { id: 'inversiones', name: 'Inversiones', icon: 'trend', color: '#2E8C86', budget: 0, subs: [] };
+  if (!mine.length) state.categories.push(keep);
+  const old = new Set(mine.map(c => c.id));
+  state.categories = state.categories.filter(c => !mine.includes(c) || c === keep);
+  keep.id = 'inversiones';
+  for (const x of [...state.movements, ...(state.recurring || []), ...(state.quick || [])]) if (old.has(x.cat)) x.cat = 'inversiones';
+  for (const m of state.movements) if (m.cat === 'inversiones' && !m.pos) m.pos = { back: null };
+}
 function commit() {
+  tidyInv(S);
   ui.saveFail = !store.save(S);
   render();
 }
@@ -1417,7 +1429,7 @@ function onSubmit(e) {
   commit();
 }
 
-if (typeof module !== 'undefined') module.exports = { rangeFor, rangeLabel, buckets, cashflow, subTotals, incomeRank, norm, spentIn, track, trackAll, money, digits, ymd, spentByCat, postRecurring, fresh, balance, worth, toTable, invest, cardDebt, cardAlerts, insights, search, tagsOf, goalPlan, own };
+if (typeof module !== 'undefined') module.exports = { tidyInv, rangeFor, rangeLabel, buckets, cashflow, subTotals, incomeRank, norm, spentIn, track, trackAll, money, digits, ymd, spentByCat, postRecurring, fresh, balance, worth, toTable, invest, cardDebt, cardAlerts, insights, search, tagsOf, goalPlan, own };
 else {
   boot();
   // App instalada: funciona sin internet y pide al navegador no borrar los datos.
