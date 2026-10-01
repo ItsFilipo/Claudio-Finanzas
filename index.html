@@ -296,6 +296,7 @@ dialog[open]::backdrop { animation: fade .3s ease-out; }
   max-width: 560px; margin-inline: auto; display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px;
   padding: 4px 16px calc(28px + env(safe-area-inset-bottom, 0px));
 }
+.sheet:focus { outline: none; }
 .sheet-top { display: grid; grid-template-columns: 40px 1fr auto; align-items: center; gap: 8px; min-height: 48px; }
 .sheet-top h2 { font: 800 18px/1.2 var(--display); text-align: center; }
 .sheet-top > :last-child { min-width: 40px; text-align: right; }
@@ -382,7 +383,7 @@ dialog[open]::backdrop { animation: fade .3s ease-out; }
 .searchbox input { flex: 1; min-width: 0; border: 0; background: none; outline: none; font-size: 16px; color: var(--ink); padding: 12px 0; }
 .tags { margin-bottom: 8px; }
 .chip-btn {
-  padding: 7px 13px; border-radius: 99px; font-size: 14px; font-weight: 700; color: var(--accent);
+  display: inline-flex; align-items: center; min-height: 40px; padding: 8px 15px; border-radius: 99px; font-size: 14px; font-weight: 700; color: var(--accent);
   background: color-mix(in oklab, var(--accent) 11%, var(--surface)); transition: transform .45s var(--spring), background .2s, color .2s;
 }
 .chip-btn.on { background: var(--accent); color: var(--on-accent); }
@@ -418,6 +419,23 @@ dialog[open]::backdrop { animation: fade .3s ease-out; }
 .worth-list .row.total .t, .worth-list .row.total .a { font-size: 16.5px; }
 .pay-box { padding: 16px; border-radius: 18px; background: var(--surface); box-shadow: var(--shadow); gap: 14px; }
 
+/* Entró vs. salió, subcategorías y día del gasto */
+.flowstrip { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: -6px 0 18px; }
+.ftile { display: grid; gap: 2px; padding: 11px 12px; border-radius: 14px; background: var(--surface); box-shadow: var(--shadow); min-width: 0; }
+.ftile small { font-size: 12px; font-weight: 600; color: var(--ink-2); }
+.ftile b { font: 800 15px/1.2 var(--display); letter-spacing: -.01em; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ftile b.pos { color: color-mix(in oklab, var(--accent) 85%, var(--ink)); }
+.ftile b.neg { color: var(--danger); }
+.nudge { display: flex; align-items: center; gap: 4px; margin-top: 22px; padding: 4px 4px 4px 2px; font-size: 13.5px; color: var(--ink-2); }
+.nudge span { flex: 1; min-width: 0; }
+.nudge .link { padding: 8px 12px; margin: 0; }
+.nudge .link.soft { color: var(--ink-2); font-weight: 650; }
+.subs { display: grid; gap: 8px; }
+.subs-t { font-size: 13.5px; font-weight: 700; color: var(--ink-2); }
+.when { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: -6px; }
+.when .hint { flex: 1 1 100%; font-size: 12.5px; }
+.chip-btn:disabled { opacity: .4; pointer-events: none; }
+
 /* Detalle de inversión: gráfica, datos y tabla */
 .chart { position: relative; margin: 4px 0 0; padding: 12px 10px 6px; background: var(--surface); border-radius: 18px; box-shadow: var(--shadow); touch-action: pan-y; }
 .chart svg { width: 100%; height: auto; display: block; overflow: visible; }
@@ -425,9 +443,15 @@ dialog[open]::backdrop { animation: fade .3s ease-out; }
 .seg.four { grid-template-columns: repeat(4, 1fr); }
 .row.plain { grid-template-columns: 1fr auto; }
 .period-bar { display: flex; align-items: center; gap: 8px; margin: 6px 0 16px; }
-.period-bar .chip-btn { padding: 8px 16px; min-height: 38px; }
+.period-bar .chip-btn { padding: 8px 18px; }
 .period-bar .link { margin-left: auto; margin-right: -12px; }
 .seg.four span { font-size: 13px; padding-inline: 2px; }
+.chart .grid { stroke: var(--line); stroke-width: 1; }
+.chart .bar { fill: var(--accent); opacity: .72; transition: opacity .15s; }
+.chart .bar.now { opacity: 1; }
+.chart .bar.sel { opacity: 1; }
+.chart .bar.zero { fill: var(--line); opacity: 1; }
+.chart .axis.strong { fill: var(--ink); font-weight: 800; }
 .chart .base { stroke: var(--ink-2); stroke-width: 1.2; stroke-dasharray: 4 4; opacity: .7; }
 .chart .now { stroke: var(--ink-2); stroke-width: 1; opacity: .5; }
 .chart .cross { stroke: var(--ink); stroke-width: 1; opacity: .35; }

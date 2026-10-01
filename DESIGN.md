@@ -85,3 +85,11 @@ The ground is a pale security-paper green. Ink and the accent are deep peso gree
   - A thin "Hoy" rule marks today.
   - Pointer or touch shows a crosshair, a ringed dot and an ink tooltip.
   - All text uses ink tokens, never the series color.
+
+## Update: subcategories, flow strip, chart, backup note
+- **Subcategories:** each sobre can have a comma-separated list. In the add sheet the chosen sobre reveals `.subs` chips (`.chip-btn`, 40px tall). Sobres without subs still save on one tap.
+- **Day chips:** `.when` holds Hoy / Ayer / Anteayer under the date field, and the chip that matches the date is filled.
+- **Flow strip:** `.flowstrip` shows three `.ftile` tiles (Entró, Gastaste, Quedó) under the big figure on Sobres, for whatever period is chosen.
+- **Time chart:** `barChart` is a single-series SVG of rounded-top bars in `--accent`. The current period is full strength and the others are at 72%. It has three gridlines, a compact money axis (`$100 mil`, `$1,2 M`) and a tap tooltip. A table below repeats every value, and the period is picked with a `.seg` control (15 días, Mes, Trimestre).
+- **Backup note:** `.nudge` is a single quiet line at the bottom of Sobres with a "Copiar" link and a softer "Luego" link. It appears after 7 days and snoozes for 3.
+- **iOS:** date and month inputs, selects, search and number inputs reset their native appearance so they fit the column on iPhone. Interactive controls are at least 40px tall.

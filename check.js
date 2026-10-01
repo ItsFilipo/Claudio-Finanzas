@@ -34,7 +34,7 @@ assert.equal(balance(w, w.methods[1]), 70000);
 assert.equal(balance(w, w.methods[0]), null);
 w.debts.push({ amount: 50000, dir: 'in' }, { amount: 10000, dir: 'out' });
 assert.deepEqual(worth(w), { liquid: 70000, inv: 0, owed: 50000, owe: 10000, cards: 0, total: 110000 });
-assert.equal(toTable(w).split('\n')[2], '2026-10-05\tComida\tAlmuerzo\tNequi\t30000');
+assert.equal(toTable(w).split('\n')[2], '2026-10-05\tComida\t\tAlmuerzo\tNequi\t30000');
 console.log('ok saldos');
 
 // Inversiones: $1.000.000 al 9% EA
@@ -137,3 +137,35 @@ const rk = incomeRank(ir, '2026-10', '2026-10');
 assert.deepEqual(rk.map(g => [g.name, g.total, g.count]), [['Sueldo', 1500000, 1], ['Papá', 80000, 2]]);
 assert.equal(incomeRank(ir, '0000', '9999')[1].total, 150000);
 console.log('ok ranking de entradas');
+
+// Subcategorías: gasto de un sobre repartido por restaurante
+const { subTotals } = require('./app.js');
+const sb = fresh(new Date(2026, 10, 1), false);
+sb.movements.push({ amount: 60000, cat: 'comida', sub: 'El Corral', date: '2026-10-05' }, { amount: 40000, cat: 'comida', sub: 'Crepes', date: '2026-10-06' },
+  { amount: 30000, cat: 'comida', sub: 'El Corral', date: '2026-10-20' }, { amount: 10000, cat: 'comida', date: '2026-10-21' }, { amount: 5000, cat: 'casa', sub: 'X', date: '2026-10-21' },
+  { amount: 99000, cat: 'comida', sub: 'Crepes', date: '2026-11-02' });
+assert.deepEqual(subTotals(sb, 'comida', '2026-10', '2026-10').map(g => [g.name, g.total, g.count]), [['El Corral', 90000, 2], ['Crepes', 40000, 1], ['', 10000, 1]]);
+assert.equal(subTotals(sb, 'comida', '2026-10', '2026-11')[0].name, 'Crepes'); // 139.000 en dos meses
+assert.equal(search(sb, 'corral').length, 2); // la búsqueda encuentra la subcategoría
+console.log('ok subcategorías');
+
+// Entró vs. salió
+const { cashflow } = require('./app.js');
+const cf = fresh(new Date(2026, 10, 1), false);
+cf.incomes.push({ amount: 2000000, date: '2026-10-01' }, { amount: 50000, date: '2026-10-09', debt: true }, { amount: 700000, date: '2026-11-01' });
+cf.movements.push({ amount: 300000, cat: 'casa', date: '2026-10-02' }, { amount: 80000, split: 40000, cat: 'comida', date: '2026-10-09' }, { amount: 1, cat: 'otros', date: '2026-11-03' });
+assert.deepEqual(cashflow(cf, '2026-10', '2026-10'), { inc: 2000000, out: 340000, left: 1660000 }); // no cuenta el pago de deuda; el gasto dividido cuenta tu parte
+console.log('ok entró vs salió');
+
+// Gráfica: grupos por 15 días, mes y trimestre
+const { buckets } = require('./app.js');
+const gb = fresh(new Date(2026, 11, 20), false);
+gb.movements.push({ amount: 100, cat: 'comida', date: '2026-10-05' }, { amount: 200, cat: 'comida', date: '2026-10-20' }, { amount: 400, cat: 'comida', date: '2026-11-30' }, { amount: 800, cat: 'comida', date: '2026-12-02' });
+const bm = buckets(gb, 'm', '2026-12-20');
+assert.deepEqual(bm.map(b => [b.short, b.total, b.now]), [['oct', 300, false], ['nov', 400, false], ['dic', 800, true]]);
+const bq = buckets(gb, 'q', '2026-12-20'); // 5 quincenas hasta el 20 de diciembre (la del 16–31 dic ya empezó)
+assert.deepEqual(bq.map(b => [b.short, b.total]), [['1–15 oct', 100], ['16–31 oct', 200], ['1–15 nov', 0], ['16–30 nov', 400], ['1–15 dic', 800], ['16–31 dic', 0]]);
+assert.equal(bq.filter(b => b.now).length, 1);
+assert.deepEqual(buckets(gb, 't', '2026-12-20').map(b => [b.short, b.total]), [['oct–dic', 1500]]);
+assert.equal(buckets(gb, 'm', '2026-10-01').length, 1); // el primer día: un solo periodo
+console.log('ok grupos de la gráfica');
