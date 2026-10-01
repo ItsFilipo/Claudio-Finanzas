@@ -103,3 +103,7 @@ The ground is a pale security-paper green. Ink and the accent are deep peso gree
 - **Toolbar + drawer:** Entradas y transferencias and the time chart open on the current week with only two `.tool` pills (date, and sort or group). A pill opens a `.drawer` card with the chips and date fields; picking a chip closes it.
 - **Temporary:** the range lives only while the sheet is open. Closing it resets to "Esta semana".
 - **iOS dates:** date and month inputs are centered with padding instead of a fixed height, so the text is not pinned to the top.
+
+## Update: bets and stocks
+- **Apuestas y acciones** live at the bottom of Inversión: a full-width "Anotar una nueva" button and a `.list` of positions. Open ones show the amount; closed ones show the result in `.a.pos` or `.a.neg`.
+- **Money model:** a position is a gasto in the sobre Inversiones (it leaves the liquid). Closing it returns what you received to an account and nets it out of that sobre, in the month the money went in.

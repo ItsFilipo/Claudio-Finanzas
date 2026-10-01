@@ -7,13 +7,15 @@ const ymd = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())
 const money = n => (n < 0 ? '−$' : '$') + Math.round(Math.abs(n)).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
 const big = n => money(n).replace('$', '<span class="cur">$</span>');
 const fmtNum = n => (n ? money(n).slice(1) : '');
+const fmtDay = d => `${+d.slice(8)} ${new Date(d + 'T00:00').toLocaleDateString('es-CO', { month: 'short' }).replace('.', '')}`;
 const digits = s => Number(String(s).replace(/\D/g, '')) || 0;
 // La app empieza en octubre de 2026: no se muestran ni se registran meses anteriores.
 const START = '2026-10';
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 
 // Lo que de verdad te costó un gasto: si lo dividiste, sin la parte que te deben.
-const own = m => m.amount - (m.split || 0);
+// Si es una apuesta o acción ya cerrada (m.pos.back), lo que te devolvieron se resta: el sobre muestra solo lo perdido (o ganado).
+const own = m => m.amount - (m.split || 0) - (m.pos?.back || 0);
 const daysIn = (y, m0) => new Date(y, m0 + 1, 0).getDate();
 const prevMonth = m => { const [y, mo] = m.split('-').map(Number); return ymd(new Date(y, mo - 2, 1)).slice(0, 7); };
 
@@ -21,7 +23,8 @@ const prevMonth = m => { const [y, mo] = m.split('-').map(Number); return ymd(ne
 function flow(state, m) {
   const tot = (xs, f) => (xs || []).filter(x => f(x) && (x.t || 0) > (m.baseT || 0)).reduce((a, x) => a + x.amount, 0);
   return tot(state.incomes, x => x.method === m.id) + tot(state.transfers, x => x.to === m.id)
-    - tot(state.movements, x => x.method === m.id) - tot(state.transfers, x => x.from === m.id);
+    - tot(state.movements, x => x.method === m.id) - tot(state.transfers, x => x.from === m.id)
+    + state.movements.filter(x => x.pos?.back && x.pos.to === m.id && x.pos.t > (m.baseT || 0)).reduce((a, x) => a + x.pos.back, 0);
 }
 // Saldo de una cuenta normal (null si no lo llevas). Las tarjetas de crédito no son plata líquida.
 const balance = (state, m) => (m.credit || m.base == null ? null : m.base + flow(state, m));
@@ -76,7 +79,8 @@ function worth(state, now = new Date()) {
   const cards = state.methods.filter(m => m.credit).reduce((a, m) => a + Math.max(0, cardDebt(state, m)), 0);
   const owed = state.debts.filter(d => d.dir === 'in').reduce((a, d) => a + d.amount, 0);
   const owe = state.debts.filter(d => d.dir === 'out').reduce((a, d) => a + d.amount, 0);
-  const inv = (state.investments || []).reduce((a, x) => a + invest(x, now).value, 0);
+  // Apuestas y acciones abiertas: la plata ya salió del líquido, pero todavía cuenta como tuya.
+  const inv = (state.investments || []).reduce((a, x) => a + invest(x, now).value, 0) + state.movements.filter(m => m.pos && m.pos.back == null).reduce((a, m) => a + m.amount, 0);
   return { liquid, inv, owed, owe, cards, total: liquid + inv + owed - owe - cards };
 }
 // Gastos como tabla para pegar en Excel o Google Sheets.
@@ -350,6 +354,7 @@ function boot() {
   delete S.settings.fakeToday;
   S.settings.since ||= ymd(new Date());
   S.categories.forEach(c => { c.subs ||= []; });
+  if (!S.categories.some(c => c.id === 'inversiones')) S.categories.push({ id: 'inversiones', name: 'Inversiones', icon: 'trend', color: '#2E8C86', budget: 0, subs: [] });
   for (const k of ['incomes', 'transfers', 'quick']) S[k] ||= [];
   trackAll(S);
   S.categories.forEach(c => { c.budget = 0; }); // por ahora sin presupuestos: solo se registra lo gastado
@@ -574,8 +579,9 @@ const VIEWS = {
   inversiones() {
     const now = new Date(), xs = S.investments.map(x => ({ x, c: invest(x, now) }));
     const head = topBar('Inversión', `<button class="btn small" data-act="inv-edit">${ico('plus', 16)} Nueva</button>`) + banners();
+    const bets = betsList();
     if (!xs.length) return head + `<div class="empty"><p>Registra un CDT, una cajita o cualquier inversión con su tasa EA y mira cuánto te paga y cuánto vas a ganar.</p>
-      <button class="btn primary" data-act="inv-edit">${ico('plus', 18)} Agregar inversión</button></div>`;
+      <button class="btn primary" data-act="inv-edit">${ico('plus', 18)} Agregar inversión</button></div>` + bets;
     const gain = sum(xs, o => o.c.gain || 0);
     const card = ({ x, c }) => {
       const atEnd = x.freq === 'e', f = FREQ[x.freq];
@@ -592,7 +598,7 @@ const VIEWS = {
     };
     return head + `<section class="summary"><p class="big">${big(sum(xs, o => o.c.value))}</p>
       <p class="sub">invertido${gain ? ` · vas a ganar ${money(gain)} en total` : ''}</p></section>
-      <div class="invs">${xs.map(card).join('')}</div>`;
+      <div class="invs">${xs.map(card).join('')}</div>` + bets;
   },
 
   metas() {
@@ -945,6 +951,47 @@ function payDebt(id, amount, method) {
   toast(d.amount <= 0 ? `Deuda con ${d.who} saldada` : `Abono de ${money(paid)} · quedan ${money(d.amount)}`);
 }
 
+// Apuestas y acciones: la plata sale del líquido y cuenta como gasto del sobre Inversiones; al cerrar se devuelve lo que recibiste.
+function betsList() {
+  const ps = S.movements.filter(m => m.pos).sort((a, b) => b.t - a.t);
+  const net = sum(ps.filter(m => m.pos.back != null), m => m.pos.back - m.amount);
+  const row = m => { const open = m.pos.back == null, r = open ? 0 : m.pos.back - m.amount;
+    return `<button class="row" data-act="pos-open" data-id="${m.id}"><span class="dot" style="--c:#2E8C86">${ico('trend', 16)}</span>
+      <span><span class="t">${esc(m.note || 'Sin nombre')}</span><span class="s">${open ? `En juego · metiste el ${fmtDay(m.date)}` : `Recibiste ${money(m.pos.back)}`}</span></span>
+      <span class="a ${open ? '' : r >= 0 ? 'pos' : 'neg'}">${open ? money(m.amount) : (r >= 0 ? '+' : '') + money(r)}</span></button>`; };
+  return `<section class="set"><h2 class="sec">Apuestas y acciones</h2>
+    <button class="btn wide" data-act="pos-new" style="margin-bottom:12px">${ico('plus', 16)} Anotar una nueva</button>
+    ${ps.length ? `${ps.some(m => m.pos.back != null) ? `<p class="hint" style="margin-bottom:10px">Resultado de las cerradas: <b>${net >= 0 ? '+' : ''}${money(net)}</b></p>` : ''}<div class="list">${ps.map(row).join('')}</div>` : `<p class="hint">Aquí anotas lo que metes en una apuesta o en acciones. Cuando recuperes la plata, la cierras y se ve si ganaste o perdiste.</p>`}</section>`;
+}
+function openPos() {
+  openSheet(sheetTop('Nueva apuesta o acción') + `<form class="form" data-form="pos">
+    <label class="amount"><span>$</span><input name="amount" inputmode="numeric" data-money autocomplete="off" placeholder="0" aria-label="Valor" required></label>
+    <label class="field"><span>¿Qué es?</span><input class="text" name="note" autocomplete="off" maxlength="40" placeholder="Ej. Combinada, acción Apple" required></label>
+    ${select('method', '¿De qué cuenta sale?', S.methods, S.settings.method)}
+    <label class="field"><span>Fecha</span><input class="text" type="date" name="date" value="${todayStr()}" min="${START}-01" required></label>
+    <p class="hint">Se descuenta de tu líquido y queda como gasto en el sobre Inversiones hasta que la cierres.</p>
+    <div class="actions"><button class="btn primary">Guardar</button></div></form>`, 'input[name=amount]');
+}
+function openPosClose(id) {
+  const m = S.movements.find(x => x.id === id), done = m.pos.back != null, acc = S.methods.filter(x => !x.credit);
+  openSheet(sheetTop(esc(m.note || 'Inversión')) + `<form class="form" data-form="pos-close" data-id="${id}">
+    <p class="hint">Metiste <b>${money(m.amount)}</b> el ${fmtDay(m.date)}.</p>
+    <label class="amount"><span>$</span><input name="amount" inputmode="numeric" data-money autocomplete="off" placeholder="¿Cuánto recibiste?" value="${done ? fmtNum(m.pos.back) : ''}" aria-label="Cuánto recibiste" required></label>
+    ${select('method', '¿A qué cuenta volvió?', acc, done ? m.pos.to : acc.some(x => x.id === m.method) ? m.method : acc[0]?.id)}
+    <label class="field"><span>Fecha</span><input class="text" type="date" name="date" value="${done ? m.pos.date : todayStr()}" min="${START}-01" required></label>
+    <p class="hint">El resultado cuenta en el mes en que metiste la plata.</p>
+    <div class="actions"><button type="button" class="btn danger" data-act="pos-del" data-id="${id}" data-confirm>Eliminar</button><button class="btn primary">Guardar</button></div>
+    ${done ? '' : `<button type="button" class="btn wide" data-act="pos-lost" data-id="${id}" style="margin-top:10px">Perdí todo ($0)</button>`}</form>`, done ? null : 'input[name=amount]');
+}
+// Cierra una apuesta o acción: lo recibido vuelve a la cuenta.
+function closePos(m, back, to, date) {
+  if (to) track(S, to, Date.now());
+  m.pos = { back, to, date, t: Date.now() };
+  commit();
+  const r = back - m.amount;
+  toast(r >= 0 ? `Ganaste ${money(r)}` : `Perdiste ${money(-r)}`);
+}
+
 function openInv(id) {
   const x = id ? S.investments.find(o => o.id === id) : { name: '', amount: 0, rate: '', freq: 'm', compound: false, start: todayStr(), months: '' };
   const radios = (name, opts, v) => `<div class="chips">${opts.map(([k, l]) => `<label class="chip"><input type="radio" name="${name}" value="${k}" ${k === v ? 'checked' : ''}><span>${l}</span></label>`).join('')}</div>`;
@@ -1273,6 +1320,10 @@ function onClick(e) {
     case 'debt-full': payDebt(id, S.debts.find(x => x.id === id).amount, el.closest('form').elements.method.value); break;
     case 'debt-edit': openDebt(id, el.dataset.dir); break;
     case 'inv-edit': openInv(id); break;
+    case 'pos-new': openPos(); break;
+    case 'pos-open': openPosClose(id); break;
+    case 'pos-lost': { const m = S.movements.find(x => x.id === id); closeSheet(); closePos(m, 0, m.method, todayStr()); break; }
+    case 'pos-del': S.movements = S.movements.filter(x => x.id !== id); closeSheet(); commit(); toast('Eliminada'); break;
     case 'inv-detail': ui.invYears = 0; openInvDetail(id); break;
     case 'inv-del': S.investments = S.investments.filter(x => x.id !== id); closeSheet(); commit(); toast('Inversión eliminada'); break;
     case 'debt-del': S.debts = S.debts.filter(d => d.id !== id); closeSheet(); commit(); toast('Deuda eliminada'); break;
@@ -1310,6 +1361,8 @@ function onSubmit(e) {
       upsert(S.transfers, { amount: digits(d.amount), from: d.from, to: d.to, note: d.note.trim(), date: d.date >= START ? d.date : todayStr(), ...(id ? {} : { t: Date.now() }) });
       break;
     case 'quick': upsert(S.quick, { note: d.note.trim(), amount: digits(d.amount), cat: d.cat, method: d.method }); break;
+    case 'pos': closeSheet(); addMov({ cat: 'inversiones', note: d.note.trim(), amount: digits(d.amount), method: d.method, date: d.date >= START ? d.date : todayStr(), pos: { back: null } }); return;
+    case 'pos-close': { const m = S.movements.find(x => x.id === id); closeSheet(); closePos(m, digits(d.amount), d.method, d.date >= START ? d.date : todayStr()); return; }
     case 'debt-pay': return payDebt(id, digits(d.amount), d.method);
     case 'inv': {
       const months = digits(d.months), rate = parseFloat(String(d.rate).replace(',', '.')) || 0;

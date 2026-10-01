@@ -184,3 +184,20 @@ assert.deepEqual(rangeFor('anio', '2027-03-10'), { from: '2027-01-01', to: '2027
 assert.equal(rangeLabel('2026-10-05', '2026-10-05'), '5 oct');
 assert.equal(rangeLabel('2026-10-01', '2026-11-18'), '1 oct – 18 nov');
 console.log('ok atajos de fechas');
+// apuestas y acciones: sale del líquido, el sobre muestra el resultado, el resultado cuenta en el mes en que metiste la plata
+{
+  const p = fresh(new Date(2026, 9, 25), false); p.methods[0].base = 80000; p.methods[0].baseT = 0;
+  const bet = { id: 'b1', t: 10, split: 0, cat: 'inversiones', note: 'Combinada', amount: 50000, method: 'm0', date: '2026-10-28', pos: { back: null } };
+  p.movements.push(bet);
+  assert.equal(balance(p, p.methods[0]), 30000);                       // salió del líquido
+  assert.equal(spentByCat(p, '2026-10').inversiones, 50000);           // gastado en el sobre Inversiones
+  assert.equal(worth(p).inv, 50000); assert.equal(worth(p).total, 80000); // abierta: sigue siendo tuya
+  bet.pos = { back: 70000, to: 'm0', date: '2026-11-02', t: 20 };        // la cierras en noviembre y ganas
+  assert.equal(balance(p, p.methods[0]), 100000);                      // vuelve con la ganancia
+  assert.equal(spentByCat(p, '2026-10').inversiones, -20000);          // el sobre de octubre muestra +20.000
+  assert.equal(spentByCat(p, '2026-11').inversiones || 0, 0);          // nada cae en noviembre
+  assert.equal(worth(p).inv, 0);
+  bet.pos = { back: 0, to: 'm0', date: '2026-11-02', t: 20 };           // perdiste todo
+  assert.equal(balance(p, p.methods[0]), 30000); assert.equal(spentByCat(p, '2026-10').inversiones, 50000);
+}
+console.log('ok apuestas y acciones');
