@@ -25,7 +25,7 @@ assert.ok(fresh(new Date(2026, 10, 3), true).movements.every(m => m.date.startsW
 console.log('ok');
 
 // Saldos, deudas y exportar
-const { norm, tidyInv, balance, worth, toTable } = require('./app.js');
+const { closePos, norm, tidyInv, balance, worth, toTable } = require('./app.js');
 const w = fresh(new Date(2026, 9, 5), false);
 w.methods[1].base = 100000; w.methods[1].baseT = 10;
 w.movements.push({ amount: 20000, cat: 'comida', method: 'm1', date: '2026-10-05', t: 5 }); // antes del saldo: no descuenta
@@ -191,7 +191,7 @@ console.log('ok atajos de fechas');
   p.movements.push(bet);
   assert.equal(balance(p, p.methods[0]), 30000);                       // salió del líquido
   assert.equal(spentByCat(p, '2026-10').inversiones, 50000);           // gastado en el sobre Inversiones
-  assert.equal(worth(p).inv, 50000); assert.equal(worth(p).total, 80000); // abierta: sigue siendo tuya
+  assert.equal(worth(p).inv, 0); assert.equal(worth(p).total, 30000); // las apuestas no suman al dinero total
   bet.pos = { back: 70000, to: 'm0', date: '2026-11-02', t: 20 };        // la cierras en noviembre y ganas
   assert.equal(balance(p, p.methods[0]), 100000);                      // vuelve con la ganancia
   assert.equal(spentByCat(p, '2026-10').inversiones, -20000);          // el sobre de octubre muestra +20.000
@@ -210,7 +210,7 @@ console.log('ok apuestas y acciones');
   assert.equal(q.categories.filter(c => norm(c.name) === 'inversiones').length, 1);
   assert.equal(q.categories.find(c => norm(c.name) === 'inversiones').subs[0], 'Bolsa'); // se queda con el tuyo
   assert.ok(q.movements.every(m => m.cat === 'inversiones' && m.pos && m.pos.back == null));
-  assert.equal(worth(q).inv, 15000);
+  assert.equal(worth(q).inv, 0);
 }
 console.log('ok sobre Inversiones único');
 // una sola cuenta con saldo: los gastos con una cuenta sin saldo salen de ella
@@ -222,3 +222,15 @@ console.log('ok sobre Inversiones único');
   assert.equal(balance(q, q.methods[3]), 50000);
 }
 console.log('ok una sola fuente de plata');
+// perder una apuesta con una sola cuenta con saldo: el líquido no vuelve a subir
+{
+  const q = fresh(new Date(2026, 9, 25), false); q.methods[3].base = 100000; q.methods[3].baseT = 0;
+  const m = { id: 'p', t: 5, split: 0, cat: 'inversiones', amount: 10000, method: 'm0', date: '2026-10-05', pos: { back: null } };
+  q.movements.push(m);
+  assert.equal(worth(q).liquid, 90000);
+  closePos(q, m, 0, 'm0', '2026-10-06');
+  assert.equal(worth(q).liquid, 90000); assert.equal(balance(q, q.methods[3]), 90000);
+  closePos(q, m, 4000, 'm0', '2026-10-06'); // recuperas 4.000: vuelven a Nu
+  assert.equal(worth(q).liquid, 94000);
+}
+console.log('ok perder una apuesta');

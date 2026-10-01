@@ -82,8 +82,8 @@ function worth(state, now = new Date()) {
   const cards = state.methods.filter(m => m.credit).reduce((a, m) => a + Math.max(0, cardDebt(state, m)), 0);
   const owed = state.debts.filter(d => d.dir === 'in').reduce((a, d) => a + d.amount, 0);
   const owe = state.debts.filter(d => d.dir === 'out').reduce((a, d) => a + d.amount, 0);
-  // Apuestas y acciones abiertas: la plata ya salió del líquido, pero todavía cuenta como tuya.
-  const inv = (state.investments || []).reduce((a, x) => a + invest(x, now).value, 0) + state.movements.filter(m => m.pos && m.pos.back == null).reduce((a, m) => a + m.amount, 0);
+  // Solo inversiones de renta fija (CDT, cajitas). Las apuestas y acciones no suman al dinero total.
+  const inv = (state.investments || []).reduce((a, x) => a + invest(x, now).value, 0);
   return { liquid, inv, owed, owe, cards, total: liquid + inv + owed - owe - cards };
 }
 // Gastos como tabla para pegar en Excel o Google Sheets.
@@ -1001,9 +1001,16 @@ function openPosClose(id) {
     ${done ? '' : `<button type="button" class="btn wide" data-act="pos-lost" data-id="${id}" style="margin-top:10px">Perdí todo ($0)</button>`}</form>`, done ? null : 'input[name=amount]');
 }
 // Cierra una apuesta o acción: lo recibido vuelve a la cuenta.
-function closePos(m, back, to, date) {
-  if (to) track(S, to, Date.now());
+function closePos(state, m, back, to, date) {
+  // Si el dinero vuelve a una cuenta sin saldo y hay una sola cuenta con saldo, vuelve a esa: de ahí se había descontado.
+  m.pos = null;
+  const sole = soleHolder(state);
+  if (sole && state.methods.find(x => x.id === to)?.base == null) to = sole.id;
+  if (to && back) track(state, to, Date.now());
   m.pos = { back, to, date, t: Date.now() };
+}
+function endPos(m, back, to, date) {
+  closePos(S, m, back, to, date);
   commit();
   const r = back - m.amount;
   toast(r >= 0 ? `Ganaste ${money(r)}` : `Perdiste ${money(-r)}`);
@@ -1339,7 +1346,7 @@ function onClick(e) {
     case 'inv-edit': openInv(id); break;
     case 'pos-new': openPos(); break;
     case 'pos-open': openPosClose(id); break;
-    case 'pos-lost': { const m = S.movements.find(x => x.id === id); closeSheet(); closePos(m, 0, m.method, todayStr()); break; }
+    case 'pos-lost': { const m = S.movements.find(x => x.id === id); closeSheet(); endPos(m, 0, m.method, todayStr()); break; }
     case 'pos-del': S.movements = S.movements.filter(x => x.id !== id); closeSheet(); commit(); toast('Eliminada'); break;
     case 'inv-detail': ui.invYears = 0; openInvDetail(id); break;
     case 'inv-del': S.investments = S.investments.filter(x => x.id !== id); closeSheet(); commit(); toast('Inversión eliminada'); break;
@@ -1379,7 +1386,7 @@ function onSubmit(e) {
       break;
     case 'quick': upsert(S.quick, { note: d.note.trim(), amount: digits(d.amount), cat: d.cat, method: d.method }); break;
     case 'pos': closeSheet(); addMov({ cat: 'inversiones', note: d.note.trim(), amount: digits(d.amount), method: d.method, date: d.date >= START ? d.date : todayStr(), pos: { back: null } }); return;
-    case 'pos-close': { const m = S.movements.find(x => x.id === id); closeSheet(); closePos(m, digits(d.amount), d.method, d.date >= START ? d.date : todayStr()); return; }
+    case 'pos-close': { const m = S.movements.find(x => x.id === id); closeSheet(); endPos(m, digits(d.amount), d.method, d.date >= START ? d.date : todayStr()); return; }
     case 'debt-pay': return payDebt(id, digits(d.amount), d.method);
     case 'inv': {
       const months = digits(d.months), rate = parseFloat(String(d.rate).replace(',', '.')) || 0;
@@ -1434,7 +1441,7 @@ function onSubmit(e) {
   commit();
 }
 
-if (typeof module !== 'undefined') module.exports = { tidyInv, rangeFor, rangeLabel, buckets, cashflow, subTotals, incomeRank, norm, spentIn, track, trackAll, money, digits, ymd, spentByCat, postRecurring, fresh, balance, worth, toTable, invest, cardDebt, cardAlerts, insights, search, tagsOf, goalPlan, own };
+if (typeof module !== 'undefined') module.exports = { closePos, tidyInv, rangeFor, rangeLabel, buckets, cashflow, subTotals, incomeRank, norm, spentIn, track, trackAll, money, digits, ymd, spentByCat, postRecurring, fresh, balance, worth, toTable, invest, cardDebt, cardAlerts, insights, search, tagsOf, goalPlan, own };
 else {
   boot();
   // App instalada: funciona sin internet y pide al navegador no borrar los datos.
