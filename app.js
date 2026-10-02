@@ -559,7 +559,7 @@ const VIEWS = {
     </section>
     ${cardAlerts(S, new Date()).map(a => `<button class="banner alert" data-act="tab" data-tab="dinero">${ico('card', 18)}<span>Paga tu <b>${esc(a.m.name)}</b> ${a.days === 0 ? 'hoy' : a.days === 1 ? 'mañana' : `en ${a.days} días`}: ${money(a.debt)}</span></button>`).join('')}
     ${flowStrip(pr)}
-    <div class="envelopes">${S.categories.map(c => envelope(c, spent[c.id] || 0)).join('')}</div>
+    <div class="envelopes">${[...S.categories].sort((a, b) => (spent[b.id] || 0) - (spent[a.id] || 0)).map(c => envelope(c, spent[c.id] || 0)).join('')}</div>
     ${pr.p === 'mes' ? summaryList() : ''}
     ${recent.length ? `<h2 class="sec">Últimos gastos</h2><div class="list">${recent.map(movRow).join('')}</div>` : ''}
     ${backupNote()}`;
