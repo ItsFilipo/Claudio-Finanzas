@@ -942,11 +942,13 @@ function openDebt(id, dir) {
   const d = id ? S.debts.find(x => x.id === id) : { who: '', amount: 0, note: '', dir, due: '' };
   const inn = d.dir === 'in';
   const accounts = S.methods.filter(m => !m.credit);
+  // Lo que te pagan siempre entra a una cuenta: por defecto Nu (o la que más usas si no tienes una Nu).
+  const payTo = (accounts.find(m => /^nu\b/.test(norm(m.name))) || accounts.find(m => m.id === S.settings.method) || accounts[0])?.id;
   openSheet(sheetTop(id ? (inn ? 'Te debe' : 'Le debes') : (inn ? 'Alguien me debe' : 'Yo debo')) +
     (id ? `<form class="form pay-box" data-form="debt-pay" data-id="${id}">
       <p class="big sm">${big(d.amount)}</p>
       <label class="field"><span>${inn ? '¿Cuánto te pagó?' : '¿Cuánto pagaste?'}</span><input class="text" name="amount" inputmode="numeric" data-money autocomplete="off" placeholder="Abono o pago completo" required></label>
-      <label class="field"><span>${inn ? '¿A qué cuenta entró?' : '¿De qué cuenta salió?'}</span><select class="text" name="method"><option value="">No registrar en una cuenta</option>${accounts.map(m => `<option value="${m.id}">${esc(m.name)}</option>`).join('')}</select></label>
+      <label class="field"><span>${inn ? '¿A qué cuenta entró?' : '¿De qué cuenta salió?'}</span><select class="text" name="method">${inn ? '' : '<option value="">No registrar en una cuenta</option>'}${accounts.map(m => `<option value="${m.id}" ${m.id === payTo ? 'selected' : ''}>${esc(m.name)}</option>`).join('')}</select></label>
       <div class="actions"><button type="button" class="btn" data-act="debt-full" data-id="${id}">Pagó todo</button><button class="btn primary">Registrar abono</button></div>
     </form><h2 class="sec">Detalles</h2>` : '') +
     `<form class="form" data-form="debt" data-id="${id || ''}" data-dir="${d.dir}">
