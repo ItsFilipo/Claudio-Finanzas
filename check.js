@@ -154,7 +154,7 @@ const { cashflow } = require('./app.js');
 const cf = fresh(new Date(2026, 10, 1), false);
 cf.incomes.push({ amount: 2000000, date: '2026-10-01' }, { amount: 50000, date: '2026-10-09', debt: true }, { amount: 700000, date: '2026-11-01' });
 cf.movements.push({ amount: 300000, cat: 'casa', date: '2026-10-02' }, { amount: 80000, split: 40000, cat: 'comida', date: '2026-10-09' }, { amount: 1, cat: 'otros', date: '2026-11-03' });
-assert.deepEqual(cashflow(cf, '2026-10', '2026-10'), { inc: 2000000, out: 340000, left: 1660000 }); // no cuenta el pago de deuda; el gasto dividido cuenta tu parte
+assert.deepEqual(cashflow(cf, '2026-10', '2026-10'), { inc: 2050000, out: 340000, left: 1710000 }); // el pago de una deuda también entra; el gasto dividido cuenta tu parte
 console.log('ok entró vs salió');
 
 // Gráfica: grupos por día, semana, 15 días, mes y trimestre dentro de un rango
@@ -244,3 +244,10 @@ console.log('ok perder una apuesta');
   q.investments[0].compound = false; assert.ok(worth(q, t).total > 80000);
 }
 console.log('ok CDT sale del líquido y suma en el total');
+// lo que te pagan de una deuda cuenta como "Entró" del mes
+{
+  const q = fresh(new Date(2026, 9, 25), false);
+  q.incomes.push({ id: 'i', t: 5, amount: 50000, method: 'm0', note: 'Pago de Juan', date: '2026-10-07', debt: true });
+  assert.equal(cashflow(q, '2026-10', '2026-10').inc, 50000);
+}
+console.log('ok deuda pagada cuenta como entrada');

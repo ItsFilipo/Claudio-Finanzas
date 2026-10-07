@@ -136,7 +136,7 @@ function incomeRank(state, from, to) {
 
 // Entró vs. salió entre dos fechas: ingresos (sin pagos de deudas) contra lo que gastaste.
 function cashflow(state, from, to) {
-  const inc = (state.incomes || []).filter(x => !x.debt && between(x.date, from, to)).reduce((a, x) => a + x.amount, 0);
+  const inc = (state.incomes || []).filter(x => between(x.date, from, to)).reduce((a, x) => a + x.amount, 0);
   const out = state.movements.filter(m => between(m.date, from, to)).reduce((a, m) => a + own(m), 0);
   return { inc, out, left: inc - out };
 }
@@ -949,6 +949,8 @@ function openDebt(id, dir) {
     ${moneyField('amount', 'Cuánto', d.amount, '0')}
     <label class="field"><span>Nota (opcional)</span><input class="text" name="note" value="${esc(d.note)}" maxlength="60" placeholder="Ej. almuerzo del viernes"></label>
     <label class="field"><span>Fecha límite (opcional)</span><input class="text" type="date" name="due" value="${d.due || ''}"></label>
+    ${id || !inn ? '' : `<label class="field"><span>¿Le prestaste plata de una cuenta?</span><select class="text" name="method"><option value="">No, es de palabra</option>${accounts.map(m => `<option value="${m.id}">${esc(m.name)}</option>`).join('')}</select></label>
+    <p class="hint">Si eliges una cuenta, la plata sale de tu líquido y pasa a "Te deben".</p>`}
     ${actions(id, 'debt-del')}</form>`, id ? 'input[name=amount]' : 'input[name=who]');
 }
 
@@ -1411,7 +1413,11 @@ function onSubmit(e) {
     case 'range':
       if (d.from > d.to) { const h = $('#range-hint'); h.textContent = '"Desde" tiene que ser antes de "Hasta".'; h.className = 'hint err'; return; }
       ui.period = 'rango'; ui.range = { from: d.from, to: d.to }; closeSheet(); render(); return;
-    case 'debt': upsert(S.debts, { who: d.who.trim(), amount: digits(d.amount), note: d.note.trim(), dir: f.dataset.dir, due: d.due || '' }); break;
+    case 'debt':
+      upsert(S.debts, { who: d.who.trim(), amount: digits(d.amount), note: d.note.trim(), dir: f.dataset.dir, due: d.due || '' });
+      // Préstamo real: la plata sale de la cuenta que elegiste y queda como "te deben". Si es de palabra, no se descuenta nada.
+      if (!id && d.method && digits(d.amount)) { track(S, d.method, Date.now()); S.transfers.push({ id: uid(), t: Date.now(), amount: digits(d.amount), from: d.method, to: null, note: `Préstamo a ${d.who.trim()}`, date: todayStr(), debt: true }); }
+      break;
     case 'cat': upsert(S.categories, { name: d.name.trim(), budget: 0, icon: d.icon, color: d.color, subs: String(d.subs || '').split(',').map(t => t.trim().slice(0, 30)).filter((t, i, a) => t && a.findIndex(u => u.toLowerCase() === t.toLowerCase()) === i) }); break;
     case 'rec': {
       const day = Math.max(1, Math.min(31, digits(d.day)));
