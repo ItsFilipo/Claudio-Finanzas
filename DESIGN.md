@@ -100,7 +100,7 @@ The ground is a pale security-paper green. Ink and the accent are deep peso gree
 - **Entradas y transferencias:** a kind filter (Todo, Ingresos, Transferencias) and a sort control (Recientes, Mayor a menor, Menor a mayor) sit under the range. The "De dónde te entra más plata" ranking follows the same range.
 
 ## Update: quiet toolbar
-- **Toolbar + drawer:** Entradas y transferencias and the time chart open on the current week with only two `.tool` pills (date, and sort or group). A pill opens a `.drawer` card with the chips and date fields; picking a chip closes it.
+- **Toolbar + drawer:** The time chart opens on the current week and Entradas y transferencias on the current month, each with only two `.tool` pills (date, and sort or group). A pill opens a `.drawer` card with the chips and date fields; picking a chip closes it.
 - **Temporary:** the range lives only while the sheet is open. Closing it resets to "Esta semana".
 - **iOS dates:** date and month inputs are centered with padding instead of a fixed height, so the text is not pinned to the top.
 

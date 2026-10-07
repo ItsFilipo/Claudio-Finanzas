@@ -156,7 +156,7 @@ const rangeLabel = (from, to) => from === to ? shortDay(from) : `${shortDay(from
 // Controles de rango reutilizables (atajos + Desde/Hasta), que recuerdan el último atajo elegido.
 const refresh = st => { if (st.k) Object.assign(st, rangeFor(st.k, todayStr())); return st; };
 const chartState = () => refresh(ui.chart ||= { k: 'sem', by: 'd' });
-const flowState = () => refresh(ui.flowF ||= { k: 'sem', sort: 'new', kind: 'all' });
+const flowState = () => refresh(ui.flowF ||= { k: 'mes', sort: 'new', kind: 'all' });
 const rangeChips = (act, st, presets) => `<div class="chips" role="group" aria-label="Rango de fechas">${presets.map(([k, l]) => `<button type="button" class="chip-btn ${String(st.k) === String(k) ? 'on' : ''}" data-act="${act}" data-k="${k}">${l}</button>`).join('')}</div>
   <div class="two even"><label class="field"><span>Desde</span><input class="text" type="date" name="${act}-from" value="${st.from}" min="${START}-01"></label>
   <label class="field"><span>Hasta</span><input class="text" type="date" name="${act}-to" value="${st.to}" min="${START}-01"></label></div>`;
