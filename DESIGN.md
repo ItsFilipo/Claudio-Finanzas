@@ -107,3 +107,6 @@ The ground is a pale security-paper green. Ink and the accent are deep peso gree
 ## Update: bets and stocks
 - **Apuestas y acciones** live at the bottom of Inversión: a full-width "Anotar una nueva" button and a `.list` of positions. Open ones show the amount; closed ones show the result in `.a.pos` or `.a.neg`.
 - **Money model:** a position is a gasto in the sobre Inversiones (it leaves the liquid). Closing it returns what you received to an account and nets it out of that sobre, in the month the money went in.
+
+## Update: income button
+- **Two floating buttons** (`.fabs`): "Anotar gasto" stays the solid primary pill; "Ingreso" sits beside it as a quieter surface pill with an accent ring and a down arrow. On phones (≤420px) both shrink so the pair leaves a 30px margin on each side.

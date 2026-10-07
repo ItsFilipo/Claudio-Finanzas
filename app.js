@@ -363,6 +363,7 @@ function boot() {
   postRecurring(S, new Date());
   ui = { view: 'sobres', month: thisMonth() };
   $('#fab').innerHTML = `${ico('plus', 22)} Anotar gasto`;
+  $('#fab-inc').innerHTML = `${ico('down2', 22)} Ingreso`;
   $('#tabs').innerHTML = [['sobres', 'Sobres', 'mail'], ['movs', 'Gastos', 'list'], ['dinero', 'Dinero', 'cash'], ['inversiones', 'Inversión', 'trend'], ['metas', 'Metas', 'target']]
     .map(([v, l, i]) => `<button data-act="tab" data-tab="${v}">${ico(i, 22)}<span>${l}</span></button>`).join('');
   applyTheme();
