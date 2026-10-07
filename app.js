@@ -15,7 +15,7 @@ const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 
 
 // Lo que de verdad te costó un gasto: si lo dividiste, sin la parte que te deben.
 // Si es una apuesta o acción ya cerrada (m.pos.back), lo que te devolvieron se resta: el sobre muestra solo lo perdido (o ganado).
-const own = m => m.amount - (m.split || 0) - (m.pos?.back || 0);
+const own = m => m.amount - (m.split || 0) - (m.pos?.back || 0) - (m.loan?.back || 0);
 const daysIn = (y, m0) => new Date(y, m0 + 1, 0).getDate();
 const prevMonth = m => { const [y, mo] = m.split('-').map(Number); return ymd(new Date(y, mo - 2, 1)).slice(0, 7); };
 
@@ -94,7 +94,7 @@ function subTotals(state, catId, from, to) {
   return [...g.values()].sort((a, b) => b.total - a.total);
 }
 const toTable = state => ['Fecha\tSobre\tSubcategoría\tNota\tMétodo\tValor', ...[...state.movements].sort((a, b) => a.date.localeCompare(b.date)).map(m =>
-  [m.date, state.categories.find(c => c.id === m.cat)?.name || 'Sin sobre', m.sub || '', m.note || '', state.methods.find(x => x.id === m.method)?.name || '', m.amount - (m.pos?.back || 0)]
+  [m.date, state.categories.find(c => c.id === m.cat)?.name || 'Sin sobre', m.sub || '', m.note || '', state.methods.find(x => x.id === m.method)?.name || '', m.amount - (m.pos?.back || 0) - (m.loan?.back || 0)]
     .map(v => String(v).replace(/[\t\n]/g, ' ')).join('\t'))].join('\n');
 
 // Gasto por sobre entre dos fechas incluidas: meses ('2026-10' a '2026-12') o días ('2026-10-03' a '2026-11-18').
@@ -402,16 +402,20 @@ function applyTheme() {
   else r.removeAttribute('data-theme');
 }
 
-// Un solo sobre "Inversiones": si ya habías creado uno con ese nombre, se usa ese y se junta todo ahí.
-// Todo gasto anotado en él cuenta como inversión abierta (sale en la pestaña Inversión).
-function tidyInv(state) {
-  const mine = state.categories.filter(c => norm(c.name) === 'inversiones');
-  const keep = mine.find(c => c.id !== 'inversiones') || mine[0] || { id: 'inversiones', name: 'Inversiones', icon: 'trend', color: '#2E8C86', budget: 0, subs: [] };
+// Un solo sobre por nombre (Inversiones, Préstamos): si ya habías creado uno igual, se usa ese y se junta todo ahí.
+function tidyCat(state, id, name, icon, color) {
+  const mine = state.categories.filter(c => norm(c.name) === norm(name));
+  const keep = mine.find(c => c.id !== id) || mine[0] || { id, name, icon, color, budget: 0, subs: [] };
   if (!mine.length) state.categories.push(keep);
   const old = new Set(mine.map(c => c.id));
   state.categories = state.categories.filter(c => !mine.includes(c) || c === keep);
-  keep.id = 'inversiones';
-  for (const x of [...state.movements, ...(state.recurring || []), ...(state.quick || [])]) if (old.has(x.cat)) x.cat = 'inversiones';
+  keep.id = id;
+  for (const x of [...state.movements, ...(state.recurring || []), ...(state.quick || [])]) if (old.has(x.cat)) x.cat = id;
+}
+// Todo gasto anotado en Inversiones cuenta como inversión abierta (sale en la pestaña Inversión).
+function tidyInv(state) {
+  tidyCat(state, 'inversiones', 'Inversiones', 'trend', '#2E8C86');
+  tidyCat(state, 'prestamos', 'Préstamos', 'user', '#7A5AA6');
   for (const m of state.movements) if (m.cat === 'inversiones' && !m.pos) m.pos = { back: null };
 }
 function commit() {
@@ -950,8 +954,7 @@ function openDebt(id, dir) {
     ${moneyField('amount', 'Cuánto', d.amount, '0')}
     <label class="field"><span>Nota (opcional)</span><input class="text" name="note" value="${esc(d.note)}" maxlength="60" placeholder="Ej. almuerzo del viernes"></label>
     <label class="field"><span>Fecha límite (opcional)</span><input class="text" type="date" name="due" value="${d.due || ''}"></label>
-    ${id || !inn ? '' : `<label class="field"><span>¿Le prestaste plata de una cuenta?</span><select class="text" name="method"><option value="">No, es de palabra</option>${accounts.map(m => `<option value="${m.id}">${esc(m.name)}</option>`).join('')}</select></label>
-    <p class="hint">Si eliges una cuenta, la plata sale de tu líquido y pasa a "Te deben".</p>`}
+    ${id || !inn ? '' : `<label class="field"><span>¿Sale de tu dinero?</span><select class="text" name="method"><option value="">No</option>${accounts.map(m => `<option value="${m.id}">Sí, de ${esc(m.name)}</option>`).join('')}</select></label>`}
     ${actions(id, 'debt-del')}</form>`, id ? 'input[name=amount]' : 'input[name=who]');
 }
 
@@ -965,6 +968,8 @@ function payDebt(id, amount, method) {
     else S.transfers.push({ ...x, from: method, to: null, note: `Pago a ${d.who}` });
   }
   d.amount -= paid;
+  const loan = S.movements.find(x => x.loan?.debt === id);
+  if (loan && d.dir === 'in') loan.loan.back = Math.min(loan.amount, loan.loan.back + paid); // el sobre Préstamos baja a medida que te devuelven
   if (d.amount <= 0) S.debts = S.debts.filter(x => x !== d);
   closeSheet();
   commit();
@@ -1416,8 +1421,8 @@ function onSubmit(e) {
       ui.period = 'rango'; ui.range = { from: d.from, to: d.to }; closeSheet(); render(); return;
     case 'debt':
       upsert(S.debts, { who: d.who.trim(), amount: digits(d.amount), note: d.note.trim(), dir: f.dataset.dir, due: d.due || '' });
-      // Préstamo real: la plata sale de la cuenta que elegiste y queda como "te deben". Si es de palabra, no se descuenta nada.
-      if (!id && d.method && digits(d.amount)) { track(S, d.method, Date.now()); S.transfers.push({ id: uid(), t: Date.now(), amount: digits(d.amount), from: d.method, to: null, note: `Préstamo a ${d.who.trim()}`, date: todayStr(), debt: true }); }
+      // Si sale de tu dinero: sale de la cuenta y cuenta como gasto del sobre Préstamos hasta que te lo devuelvan.
+      if (!id && d.method && digits(d.amount)) { track(S, d.method, Date.now()); S.movements.push({ id: uid(), t: Date.now(), split: 0, cat: 'prestamos', note: `Préstamo a ${d.who.trim()}`, amount: digits(d.amount), method: d.method, date: todayStr(), loan: { debt: S.debts.at(-1).id, back: 0 } }); }
       break;
     case 'cat': upsert(S.categories, { name: d.name.trim(), budget: 0, icon: d.icon, color: d.color, subs: String(d.subs || '').split(',').map(t => t.trim().slice(0, 30)).filter((t, i, a) => t && a.findIndex(u => u.toLowerCase() === t.toLowerCase()) === i) }); break;
     case 'rec': {

@@ -251,3 +251,17 @@ console.log('ok CDT sale del líquido y suma en el total');
   assert.equal(cashflow(q, '2026-10', '2026-10').inc, 50000);
 }
 console.log('ok deuda pagada cuenta como entrada');
+// préstamos: salen de la cuenta, cuentan en el sobre Préstamos y bajan a medida que te devuelven
+{
+  const q = fresh(new Date(2026, 9, 25), false); q.methods[3].base = 100000; q.methods[3].baseT = 0;
+  tidyInv(q);
+  assert.equal(q.categories.filter(c => c.id === 'prestamos').length, 1);
+  const m = { id: 'l', t: 5, split: 0, cat: 'prestamos', amount: 30000, method: 'm3', date: '2026-10-05', loan: { debt: 'd', back: 0 } };
+  q.movements.push(m);
+  assert.equal(balance(q, q.methods[3]), 70000); assert.equal(spentByCat(q, '2026-10').prestamos, 30000);
+  m.loan.back = 10000; q.incomes.push({ id: 'i', t: 9, amount: 10000, method: 'm3', date: '2026-10-08', debt: true });
+  assert.equal(spentByCat(q, '2026-10').prestamos, 20000); assert.equal(balance(q, q.methods[3]), 80000);
+  m.loan.back = 30000; q.incomes.push({ id: 'j', t: 10, amount: 20000, method: 'm3', date: '2026-10-09', debt: true });
+  assert.equal(spentByCat(q, '2026-10').prestamos, 0); assert.equal(balance(q, q.methods[3]), 100000);
+}
+console.log('ok préstamos');
